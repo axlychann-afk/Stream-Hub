@@ -1,0 +1,27 @@
+kind = "web"
+previewPath = "/"
+title = "DonghuaStream"
+version = "1.0.0"
+id = "artifacts/donghua-stream"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 18837
+
+[services.development]
+run = "pnpm --filter @workspace/donghua-stream run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/donghua-stream", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/donghua-stream/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "18837"
+BASE_PATH = "/"
