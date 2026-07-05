@@ -1,6 +1,6 @@
 {
   "installCommand": "corepack enable pnpm && pnpm install --frozen-lockfile",
-  "buildCommand": "bash vercel-build.sh",
+  "buildCommand": "BUILD_OUT_DIR=../../dist pnpm --filter @workspace/donghua-stream run build",
   "outputDirectory": "dist",
   "framework": null,
   "rewrites": [
