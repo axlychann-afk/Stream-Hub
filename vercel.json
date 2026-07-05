@@ -1,7 +1,7 @@
 {
   "version": 2,
   "installCommand": "npm install -g pnpm@latest && pnpm install",
-  "buildCommand": "pnpm --filter @workspace/api-spec run codegen && pnpm --filter @workspace/donghua-stream run build && cp -r artifacts/donghua-stream/dist ./public",
+  "buildCommand": "pnpm --filter @workspace/api-spec run codegen && pnpm --filter @workspace/donghua-stream run build",
   "outputDirectory": "public",
   "framework": null,
   "rewrites": [
