@@ -1,6 +1,5 @@
 .git
 attached_assets
 artifacts/mockup-sandbox
-artifacts/donghua-stream/dist
 artifacts/api-server/dist
 node_modules
