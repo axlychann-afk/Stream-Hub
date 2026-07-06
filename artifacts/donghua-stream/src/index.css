@@ -159,3 +159,57 @@
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
+
+/* Hero height — shorter on mobile, taller on desktop */
+.hero-height {
+  height: 65vw;
+  min-height: 320px;
+  max-height: 560px;
+}
+@media (min-width: 768px) {
+  .hero-height {
+    height: 55vh;
+    min-height: 440px;
+    max-height: 700px;
+  }
+}
+
+/* Smooth scrolling & tap highlight */
+html {
+  scroll-behavior: smooth;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* GPU-composited transitions — targeted only, not global */
+.hero-fade {
+  transition: opacity 250ms ease-in-out;
+  will-change: opacity;
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+}
+.hero-slide {
+  transition: opacity 250ms ease-in-out, transform 250ms ease-in-out;
+  will-change: opacity, transform;
+}
+.hero-scale {
+  transform: scale(1.05);
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+}
+
+/* Respect reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .hero-fade,
+  .hero-slide {
+    transition: none !important;
+  }
+}
+
+/* Better touch scrolling */
+.snap-x {
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+}
+.snap-start {
+  scroll-snap-align: start;
+}
