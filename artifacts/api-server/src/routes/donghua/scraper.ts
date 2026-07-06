@@ -1,6 +1,8 @@
 import axios from "axios";
+import * as cheerio from "cheerio";
 
 const AXLY_BASE = "https://axlyapi.qzz.io/donghua";
+const ANICHIN_BASE = "https://anichin.moe";
 const REQUEST_TIMEOUT = 20000;
 
 const http = axios.create({
@@ -8,6 +10,17 @@ const http = axios.create({
   timeout: REQUEST_TIMEOUT,
   headers: {
     "User-Agent": "DonghuaStream/1.0",
+  },
+});
+
+const httpDirect = axios.create({
+  baseURL: ANICHIN_BASE,
+  timeout: REQUEST_TIMEOUT,
+  headers: {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml",
+    "Accept-Language": "id-ID,id;q=0.9,en;q=0.8",
+    "Referer": "https://anichin.moe/",
   },
 });
 
@@ -321,48 +334,66 @@ export interface PopularItem {
   rel: string;
 }
 
-interface AxlyPopularResponse {
-  status: boolean;
-  result?: {
-    title?: unknown;
-    total?: unknown;
-    source?: unknown;
-    list?: unknown[];
-  };
-}
-
-interface AxlyPopularItem {
-  title?: unknown;
-  short_title?: unknown;
-  slug?: unknown;
-  url?: unknown;
-  episode?: unknown;
-  type?: unknown;
-  sub_status?: unknown;
-  is_hot?: unknown;
-  image?: unknown;
-  image_alt?: unknown;
-  rel?: unknown;
-}
-
+/** Scrape latest/popular releases directly from anichin.moe homepage */
 export async function scrapePopular(): Promise<PopularItem[]> {
-  const { data } = await http.get<AxlyPopularResponse>("/popular");
-  const list = Array.isArray(data?.result?.list) ? data.result!.list : [];
-  return list.map((raw) => {
-    const item = (typeof raw === "object" && raw !== null ? raw : {}) as AxlyPopularItem;
-    return {
-      title: str(item.title),
-      short_title: str(item.short_title),
-      slug: str(item.slug),
-      url: str(item.url),
-      episode: str(item.episode),
-      type: str(item.type),
-      sub_status: str(item.sub_status),
-      is_hot: typeof item.is_hot === "boolean" ? item.is_hot : false,
-      image: typeof item.image === "string" ? item.image : null,
-      image_alt: str(item.image_alt),
-      rel: str(item.rel),
-    };
+  const { data } = await httpDirect.get<string>("/", { responseType: "text" });
+  const $ = cheerio.load(data);
+  const items: PopularItem[] = [];
+
+  $(".listupd .bs").each((_, el) => {
+    const linkEl = $(el).find(".bsx a");
+    const href = linkEl.attr("href") ?? "";
+    // Prefer anchor title attr; fall back to .tt text then deduplicate
+    const rawTitle =
+      linkEl.attr("title") ||
+      $(el).find(".tt").contents().filter((_, n) => n.type === "text").first().text().trim() ||
+      $(el).find(".tt").text().trim();
+    const title = dedupeTitle(rawTitle);
+    if (!title || !href) return;
+
+    const fullUrl = href.startsWith("http") ? href : `${ANICHIN_BASE}${href}`;
+    const slug = fullUrl
+      .replace(/^https?:\/\/[^/]+\//, "")
+      .replace(/\/$/, "");
+
+    // Episode label (e.g. "Ep 148")
+    const episode = $(el).find(".epx").text().trim();
+    const sub = $(el).find(".sb").text().trim();
+    const type = $(el).find(".typez").text().trim();
+
+    // Try both src and data-src for thumbnail
+    const imgEl = $(el).find("img");
+    const image =
+      imgEl.attr("src") ||
+      imgEl.attr("data-src") ||
+      imgEl.attr("data-lazy-src") ||
+      null;
+
+    // Shorten title for display (remove episode suffix for short_title)
+    const short_title = title.replace(/\s+Episode\s+\d+.*/i, "").trim();
+
+    items.push({
+      title,
+      short_title,
+      slug,
+      url: fullUrl,
+      episode,
+      type,
+      sub_status: sub,
+      is_hot: true,
+      image: image && image.startsWith("data:") ? null : image,
+      image_alt: title,
+      rel: "",
+    });
+  });
+
+  // Deduplicate by series slug (strip episode suffix so same series isn't shown twice)
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    const seriesSlug = item.slug.replace(/-episode-\d+.*$/i, "").replace(/-subtitle-.*$/i, "");
+    if (seen.has(seriesSlug)) return false;
+    seen.add(seriesSlug);
+    return true;
   });
 }
 
