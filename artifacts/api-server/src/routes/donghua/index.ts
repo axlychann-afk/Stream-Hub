@@ -8,6 +8,7 @@ import {
   scrapeDetail,
   scrapeStream,
   scrapeSchedule,
+  scrapePopular,
 } from "./scraper.js";
 
 const router = Router();
@@ -230,6 +231,18 @@ router.get("/stream", async (req, res) => {
     req.log.error({ err }, "Failed to scrape stream");
     res.status(404).json({ status: false, error: message });
   }
+});
+
+// GET /api/donghua/popular — popular today from axly API
+router.get("/popular", async (req, res) => {
+  await swr(
+    "popular",
+    async () => {
+      const results = await scrapePopular();
+      return { status: true, total: results.length, results };
+    },
+    300
+  )(res, req.log);
 });
 
 // GET /api/donghua/trending — homepage hero data

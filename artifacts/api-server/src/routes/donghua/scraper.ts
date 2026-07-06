@@ -307,6 +307,65 @@ export async function scrapeStream(slug: string): Promise<StreamInfo> {
   };
 }
 
+export interface PopularItem {
+  title: string;
+  short_title: string;
+  slug: string;
+  url: string;
+  episode: string;
+  type: string;
+  sub_status: string;
+  is_hot: boolean;
+  image: string | null;
+  image_alt: string;
+  rel: string;
+}
+
+interface AxlyPopularResponse {
+  status: boolean;
+  result?: {
+    title?: unknown;
+    total?: unknown;
+    source?: unknown;
+    list?: unknown[];
+  };
+}
+
+interface AxlyPopularItem {
+  title?: unknown;
+  short_title?: unknown;
+  slug?: unknown;
+  url?: unknown;
+  episode?: unknown;
+  type?: unknown;
+  sub_status?: unknown;
+  is_hot?: unknown;
+  image?: unknown;
+  image_alt?: unknown;
+  rel?: unknown;
+}
+
+export async function scrapePopular(): Promise<PopularItem[]> {
+  const { data } = await http.get<AxlyPopularResponse>("/popular");
+  const list = Array.isArray(data?.result?.list) ? data.result!.list : [];
+  return list.map((raw) => {
+    const item = (typeof raw === "object" && raw !== null ? raw : {}) as AxlyPopularItem;
+    return {
+      title: str(item.title),
+      short_title: str(item.short_title),
+      slug: str(item.slug),
+      url: str(item.url),
+      episode: str(item.episode),
+      type: str(item.type),
+      sub_status: str(item.sub_status),
+      is_hot: typeof item.is_hot === "boolean" ? item.is_hot : false,
+      image: typeof item.image === "string" ? item.image : null,
+      image_alt: str(item.image_alt),
+      rel: str(item.rel),
+    };
+  });
+}
+
 export async function scrapeSchedule(): Promise<
   Record<string, ScheduleItem[]>
 > {

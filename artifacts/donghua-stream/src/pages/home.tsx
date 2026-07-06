@@ -1,4 +1,5 @@
 import { useGetTrending, useGetSchedule } from "@workspace/api-client-react";
+import { useGetPopular } from "@/hooks/usePopular";
 import { HeroBanner } from "@/components/HeroBanner";
 import { HorizontalRow } from "@/components/HorizontalRow";
 import { DonghuaCard, DonghuaCardSkeleton } from "@/components/DonghuaCard";
@@ -51,12 +52,22 @@ function SectionHeader({
 export default function Home() {
   const { data: trending, isLoading } = useGetTrending();
   const { data: scheduleData, isLoading: scheduleLoading } = useGetSchedule();
+  const { data: popularData, isLoading: popularLoading } = useGetPopular();
 
   const heroItems   = trending?.ongoing?.slice(0, 5) ?? [];
-  const popularToday = trending?.ongoing?.slice(0, 12) ?? [];
   const latestRelease = trending?.completed?.slice(0, 12) ?? [];
   const moreSeries   = trending?.ongoing?.slice(5, 17) ?? [];
   const upcoming     = trending?.upcoming ?? [];
+
+  const popularToday = (popularData?.results ?? []).map((item) => ({
+    title: item.title,
+    slug: item.slug,
+    url: item.url,
+    type: item.type,
+    status: "Ongoing",
+    sub: item.sub_status,
+    thumbnail: item.image,
+  }));
 
   const todayName = DAY_EN[["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"][new Date().getDay()]] ?? "";
   const scheduleMap = scheduleData?.result ?? {};
@@ -79,7 +90,7 @@ export default function Home() {
           icon={<TrendingUp className="w-5 h-5 text-primary" />}
           items={popularToday}
           viewAllHref="/ongoing"
-          isLoading={isLoading}
+          isLoading={popularLoading}
           skeletonCount={8}
         />
 
