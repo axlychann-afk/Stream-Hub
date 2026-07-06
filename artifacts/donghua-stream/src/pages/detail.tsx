@@ -59,12 +59,15 @@ export default function Detail() {
     }
   };
 
-  // Episodes are sorted ascending from backend (ep 1 is at index 0)
-  const firstEpisode = item.episodes && item.episodes.length > 0 
-    ? item.episodes[0]
-    : null;
-    
+  // Backend sends episodes ascending (ep 1 at index 0).
+  // We display newest first, but "Start Watching" links to ep 1.
+  const episodes = item.episodes ?? [];
+  const firstEpisode = episodes.length > 0 ? episodes[0] : null;
+  const latestEpisode = episodes.length > 0 ? episodes[episodes.length - 1] : null;
   const firstEpisodeSlug = firstEpisode ? getEpisodeSlug(firstEpisode.url) : '';
+  const latestEpisodeSlug = latestEpisode ? getEpisodeSlug(latestEpisode.url) : '';
+  // Reversed copy for display (newest at top)
+  const episodesDesc = [...episodes].reverse();
 
   return (
     <div className="min-h-screen bg-background pb-20">
@@ -112,13 +115,21 @@ export default function Detail() {
               )}
             </div>
             
-            {firstEpisodeSlug && (
+            {latestEpisodeSlug && (
               <Link 
-                href={`/watch/${slug}/${firstEpisodeSlug}`}
+                href={`/watch/${slug}/${latestEpisodeSlug}`}
                 className="w-full mt-4 flex items-center justify-center gap-2 bg-primary hover:bg-primary/90 text-primary-foreground py-3 rounded-xl font-bold transition-all shadow-lg shadow-primary/20 hover:-translate-y-1"
               >
                 <PlayCircle className="w-5 h-5 fill-current" />
-                Start Watching
+                Ep Terbaru
+              </Link>
+            )}
+            {firstEpisodeSlug && firstEpisodeSlug !== latestEpisodeSlug && (
+              <Link 
+                href={`/watch/${slug}/${firstEpisodeSlug}`}
+                className="w-full mt-2 flex items-center justify-center gap-2 bg-secondary hover:bg-secondary/80 text-secondary-foreground py-2.5 rounded-xl font-medium text-sm transition-all"
+              >
+                Mulai dari Ep 1
               </Link>
             )}
           </div>
@@ -194,8 +205,7 @@ export default function Detail() {
               
               {item.episodes && item.episodes.length > 0 ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-                  {/* Map episodes, assuming they are sorted descending */}
-                  {item.episodes.map((ep) => {
+                  {episodesDesc.map((ep) => {
                     const epSlug = getEpisodeSlug(ep.url);
                     return (
                       <Link 
