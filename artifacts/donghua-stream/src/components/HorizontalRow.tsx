@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useState, useRef } from "react";
 import { Link } from "wouter";
 import { ChevronRight, ChevronLeft } from "lucide-react";
 import { DonghuaItem } from "@workspace/api-client-react";
@@ -78,6 +78,7 @@ export function HorizontalRow({
 }
 
 function RowCard({ item }: { item: DonghuaItem }) {
+  const [loaded, setLoaded] = useState(false);
   const isOngoing = item.status?.toLowerCase().includes("ongoing");
   const isCompleted = item.status?.toLowerCase().includes("completed");
 
@@ -89,13 +90,26 @@ function RowCard({ item }: { item: DonghuaItem }) {
     >
       <div className="relative aspect-[3/4] w-full bg-muted overflow-hidden">
         {item.thumbnail ? (
-          <img
-            src={item.thumbnail}
-            alt={item.title}
-            className="w-full h-full object-cover"
-            loading="lazy"
-            decoding="async"
-          />
+          <>
+            {/* Shimmer placeholder */}
+            <div
+              className={cn(
+                "absolute inset-0 animate-pulse bg-gradient-to-br from-muted to-muted/60 transition-opacity duration-300",
+                loaded ? "opacity-0" : "opacity-100"
+              )}
+            />
+            <img
+              src={item.thumbnail}
+              alt={item.title}
+              className={cn(
+                "w-full h-full object-cover transition-all duration-500",
+                loaded ? "opacity-100 blur-0" : "opacity-0 blur-sm"
+              )}
+              loading="lazy"
+              decoding="async"
+              onLoad={() => setLoaded(true)}
+            />
+          </>
         ) : (
           <div className="w-full h-full flex items-center justify-center bg-muted/60">
             <span className="text-muted-foreground text-[10px]">No Image</span>

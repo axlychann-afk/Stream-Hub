@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Link } from "wouter";
 import { cn } from "@/lib/utils";
 import { DonghuaItem } from "@workspace/api-client-react";
@@ -9,10 +10,9 @@ interface DonghuaCardProps {
 }
 
 export function DonghuaCard({ item, className }: DonghuaCardProps) {
+  const [loaded, setLoaded] = useState(false);
   const isOngoing = item.status?.toLowerCase().includes("ongoing");
   const isCompleted = item.status?.toLowerCase().includes("completed");
-
-  // Shorten status label so it fits on small cards
   const statusLabel = isOngoing ? "Ongoing" : isCompleted ? "Selesai" : item.status ?? "";
 
   return (
@@ -26,13 +26,26 @@ export function DonghuaCard({ item, className }: DonghuaCardProps) {
     >
       <div className="relative aspect-[3/4] w-full overflow-hidden bg-muted">
         {item.thumbnail ? (
-          <img
-            src={item.thumbnail}
-            alt={item.title}
-            className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
-            loading="lazy"
-            decoding="async"
-          />
+          <>
+            {/* Shimmer placeholder — shown until image loads */}
+            <div
+              className={cn(
+                "absolute inset-0 animate-pulse bg-gradient-to-br from-muted to-muted/60 transition-opacity duration-300",
+                loaded ? "opacity-0" : "opacity-100"
+              )}
+            />
+            <img
+              src={item.thumbnail}
+              alt={item.title}
+              className={cn(
+                "h-full w-full object-cover transition-all duration-500 group-hover:scale-110",
+                loaded ? "opacity-100 blur-0" : "opacity-0 blur-sm"
+              )}
+              loading="lazy"
+              decoding="async"
+              onLoad={() => setLoaded(true)}
+            />
+          </>
         ) : (
           <div className="h-full w-full flex items-center justify-center bg-muted/50">
             <span className="text-muted-foreground text-xs">No Image</span>
@@ -42,7 +55,7 @@ export function DonghuaCard({ item, className }: DonghuaCardProps) {
         {/* Gradient overlay */}
         <div className="absolute inset-0 card-mask opacity-80 group-hover:opacity-100 transition-opacity duration-300" />
 
-        {/* Sub badge — top-left only, small */}
+        {/* Sub badge */}
         {item.sub && (
           <div className="absolute top-1.5 left-1.5">
             <span className="rounded bg-primary/90 backdrop-blur-md px-1.5 py-0.5 text-[9px] font-bold text-white leading-none">
@@ -51,7 +64,7 @@ export function DonghuaCard({ item, className }: DonghuaCardProps) {
           </div>
         )}
 
-        {/* Status badge — top-right, color dot + short text */}
+        {/* Status badge */}
         {item.status && (
           <div className="absolute top-1.5 right-1.5">
             <span
@@ -82,7 +95,7 @@ export function DonghuaCard({ item, className }: DonghuaCardProps) {
           </div>
         </div>
 
-        {/* Title — always visible at bottom */}
+        {/* Title */}
         <div className="absolute bottom-0 left-0 right-0 p-2">
           <h3 className="font-semibold text-white line-clamp-2 text-[11px] leading-tight drop-shadow">
             {item.title}
