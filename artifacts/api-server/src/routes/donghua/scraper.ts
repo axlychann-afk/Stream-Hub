@@ -1,32 +1,19 @@
 import axios from "axios";
-import * as cheerio from "cheerio";
 
-export const BASE_URL = "https://anichin.moe";
-
-const HEADERS = {
-  "User-Agent":
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-  Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-  "Accept-Language": "id-ID,id;q=0.9,en;q=0.8",
-  "Cache-Control": "no-cache",
-};
-
+const AXLY_BASE = "https://axlyapi.qzz.io/donghua";
 const REQUEST_TIMEOUT = 20000;
 
-export function extractSlugFromUrl(url: string): string {
-  return url
-    .replace(/^https?:\/\/[^/]+\//, "")
-    .replace(/\/$/, "")
-    .replace(/^\//, "");
-}
+const http = axios.create({
+  baseURL: AXLY_BASE,
+  timeout: REQUEST_TIMEOUT,
+  headers: {
+    "User-Agent": "DonghuaStream/1.0",
+  },
+});
 
-export async function fetchPage(url: string): Promise<cheerio.CheerioAPI> {
-  const { data } = await axios.get(url, {
-    headers: HEADERS,
-    timeout: REQUEST_TIMEOUT,
-  });
-  return cheerio.load(data);
-}
+// ──────────────────────────────────────────────
+// Types (kept identical so route handlers don't change)
+// ──────────────────────────────────────────────
 
 export interface DonghuaItem {
   title: string;
@@ -81,352 +68,271 @@ export interface ScheduleItem {
   is_vip: boolean;
 }
 
-function parseDonghuaItems($: cheerio.CheerioAPI): DonghuaItem[] {
-  const results: DonghuaItem[] = [];
-  $(".listupd .bs").each((_, el) => {
-    const link = $(el).find(".bsx a").attr("href") || "";
-    const title = $(el).find(".tt").text().trim() || "";
-    const type = $(el).find(".typez").text().trim() || "";
-    const status = $(el).find(".epx").text().trim() || "";
-    const sub = $(el).find(".sb").text().trim() || "";
-    const thumbnail = $(el).find("img").attr("src") || null;
+// ──────────────────────────────────────────────
+// Internal API response shapes
+// ──────────────────────────────────────────────
 
-    if (title && link) {
-      const slug = extractSlugFromUrl(link);
-      results.push({
-        title,
-        slug,
-        url: link.startsWith("http") ? link : `${BASE_URL}${link}`,
-        type,
-        status,
-        sub,
-        thumbnail,
-      });
-    }
-  });
-  return results;
+interface AxlyListResponse {
+  status: boolean;
+  total?: number;
+  results?: unknown[];
 }
 
-function deduplicateByUrl(items: DonghuaItem[]): DonghuaItem[] {
-  const seen = new Set<string>();
-  return items.filter((item) => {
-    if (seen.has(item.url)) return false;
-    seen.add(item.url);
-    return true;
-  });
+interface AxlyListItem {
+  title?: unknown;
+  slug?: unknown;
+  url?: unknown;
+  type?: unknown;
+  status?: unknown;
+  sub?: unknown;
+  thumbnail?: unknown;
 }
 
-export async function scrapeList(
-  urlPattern: string,
-  page = 1,
-  maxPages = 1
-): Promise<{ results: DonghuaItem[]; hasMore: boolean }> {
-  let allResults: DonghuaItem[] = [];
-  let hasMore = false;
+interface AxlyDetailResponse {
+  status: boolean;
+  error?: string;
+  result?: {
+    title?: unknown;
+    alternative?: unknown;
+    rating?: unknown;
+    status?: unknown;
+    type?: unknown;
+    studio?: unknown;
+    network?: unknown;
+    releaseDate?: unknown;
+    duration?: unknown;
+    season?: unknown;
+    country?: unknown;
+    totalEpisodes?: unknown;
+    subber?: unknown;
+    genres?: unknown;
+    sinopsis?: unknown;
+    cover?: unknown;
+    episodes?: unknown[];
+  };
+}
 
-  for (let p = page; p < page + maxPages; p++) {
-    const url = urlPattern.replace("{page}", String(p));
-    const $ = await fetchPage(url);
-    const items = parseDonghuaItems($);
-    allResults = allResults.concat(items);
-    hasMore = $(".pagination .nextpage").length > 0;
-    if (!hasMore) break;
+interface AxlyStreamResponse {
+  status: boolean;
+  error?: string;
+  result?: {
+    title?: unknown;
+    source?: unknown;
+    video_id?: unknown;
+    embed_url?: unknown;
+    watch_url?: unknown;
+  };
+}
+
+interface AxlyScheduleResponse {
+  status: boolean;
+  result?: Record<string, unknown[]>;
+}
+
+interface AxlyEpisode {
+  number?: unknown;
+  title?: unknown;
+  url?: unknown;
+  slug?: unknown;
+  date?: unknown;
+}
+
+// ──────────────────────────────────────────────
+// Helpers
+// ──────────────────────────────────────────────
+
+/** Remove duplicated title text like "Foo BarFoo Bar" → "Foo Bar" */
+function dedupeTitle(raw: unknown): string {
+  const title = typeof raw === "string" ? raw : "";
+  const half = Math.floor(title.length / 2);
+  if (title.length > 0 && title.length % 2 === 0 && title.slice(0, half) === title.slice(half)) {
+    return title.slice(0, half);
   }
-
-  return { results: deduplicateByUrl(allResults), hasMore };
+  return title;
 }
+
+function str(v: unknown, fallback = ""): string {
+  return typeof v === "string" ? v : fallback;
+}
+
+function slugFromUrl(url: string): string {
+  return url
+    .replace(/^https?:\/\/[^/]+\//, "")
+    .replace(/\/$/, "")
+    .replace(/^\//, "");
+}
+
+function mapItem(raw: unknown): DonghuaItem {
+  const item = (typeof raw === "object" && raw !== null ? raw : {}) as AxlyListItem;
+  return {
+    title: dedupeTitle(item.title),
+    slug: str(item.slug),
+    url: str(item.url),
+    type: str(item.type),
+    status: str(item.status),
+    sub: str(item.sub),
+    thumbnail: typeof item.thumbnail === "string" ? item.thumbnail : null,
+  };
+}
+
+/**
+ * Derive hasMore from upstream metadata.
+ * The axly API returns `total` = count of items on THIS page (not the grand total).
+ * If the returned page is full (matches total on page), assume more pages exist.
+ * We cap the page size assumption at 30 (observed from API).
+ */
+function computeHasMore(data: AxlyListResponse, pageSize = 30): boolean {
+  const results = Array.isArray(data.results) ? data.results : [];
+  // If this page returned a full set, assume there is a next page
+  return results.length >= pageSize;
+}
+
+// ──────────────────────────────────────────────
+// Exported scraper functions
+// ──────────────────────────────────────────────
 
 export async function scrapeOngoing(
   page = 1
 ): Promise<{ results: DonghuaItem[]; hasMore: boolean }> {
-  return scrapeList(`${BASE_URL}/ongoing/page/{page}/`, page);
+  const { data } = await http.get<AxlyListResponse>(`/ongoing?page=${page}`);
+  const results = (Array.isArray(data.results) ? data.results : []).map(mapItem);
+  return { results, hasMore: computeHasMore(data) };
 }
 
 export async function scrapeCompleted(
   page = 1
 ): Promise<{ results: DonghuaItem[]; hasMore: boolean }> {
-  return scrapeList(`${BASE_URL}/completed/page/{page}/`, page);
+  const { data } = await http.get<AxlyListResponse>(`/completed?page=${page}`);
+  const results = (Array.isArray(data.results) ? data.results : []).map(mapItem);
+  return { results, hasMore: computeHasMore(data) };
 }
 
 export async function scrapeDropped(
   page = 1
 ): Promise<{ results: DonghuaItem[]; hasMore: boolean }> {
-  return scrapeList(`${BASE_URL}/drop/page/{page}/`, page);
+  const { data } = await http.get<AxlyListResponse>(`/drop?page=${page}`);
+  const results = (Array.isArray(data.results) ? data.results : []).map(mapItem);
+  return { results, hasMore: computeHasMore(data) };
 }
 
 export async function scrapeUpcoming(): Promise<{
   results: DonghuaItem[];
   hasMore: boolean;
 }> {
-  const $ = await fetchPage(`${BASE_URL}/upcoming-donghua/`);
-  const results = parseDonghuaItems($);
-  const hasMore = $(".pagination .nextpage").length > 0;
-  return { results, hasMore };
+  const { data } = await http.get<AxlyListResponse>("/upcoming");
+  const results = (Array.isArray(data.results) ? data.results : []).map(mapItem);
+  return { results, hasMore: false };
 }
 
 export async function scrapeSearch(
   q: string
 ): Promise<{ results: DonghuaItem[] }> {
-  const $ = await fetchPage(
-    `${BASE_URL}/?s=${encodeURIComponent(q)}`
+  const { data } = await http.get<AxlyListResponse>(
+    `/search?q=${encodeURIComponent(q)}`
   );
-  const results = parseDonghuaItems($);
+  const results = (Array.isArray(data.results) ? data.results : []).map(mapItem);
   return { results };
 }
 
 export async function scrapeDetail(slug: string): Promise<DonghuaDetail> {
-  const url = `${BASE_URL}/${slug}/`;
-  const $ = await fetchPage(url);
+  const { data } = await http.get<AxlyDetailResponse>(
+    `/detail?slug=${encodeURIComponent(slug)}`
+  );
 
-  const detail: DonghuaDetail = {
-    title: "",
-    alternative: "",
-    rating: "",
-    status: "",
-    type: "",
-    studio: "",
-    network: "",
-    releaseDate: "",
-    duration: "",
-    season: "",
-    country: "",
-    totalEpisodes: "",
-    subber: "",
-    genres: [],
-    sinopsis: "",
-    cover: null,
-    episodes: [],
-  };
-
-  detail.title = $(".bixbox .infox h1.entry-title").text().trim();
-  detail.alternative = $(".bixbox .infox .alter").text().trim();
-  detail.cover = $(".bixbox .thumb img").attr("src") || null;
-
-  const ratingText = $(".bixbox .rating strong").text().trim();
-  detail.rating = ratingText.replace("Rating ", "");
-
-  $(".bixbox .info-content .spe span").each((_, el) => {
-    const text = $(el).text().trim();
-    if (text.includes("Status:"))
-      detail.status = text.replace("Status:", "").trim();
-    else if (text.includes("Tipe:"))
-      detail.type = text.replace("Tipe:", "").trim();
-    else if (text.includes("Studio:"))
-      detail.studio = text.replace("Studio:", "").trim();
-    else if (text.includes("Network:"))
-      detail.network = text.replace("Network:", "").trim();
-    else if (text.includes("Tanggal rilis:"))
-      detail.releaseDate = text.replace("Tanggal rilis:", "").trim();
-    else if (text.includes("Durasi:"))
-      detail.duration = text.replace("Durasi:", "").trim();
-    else if (text.includes("Season:"))
-      detail.season = text.replace("Season:", "").trim();
-    else if (text.includes("Negara:"))
-      detail.country = text.replace("Negara:", "").trim();
-    else if (text.includes("Episode:"))
-      detail.totalEpisodes = text.replace("Episode:", "").trim();
-    else if (text.includes("Subber:"))
-      detail.subber = text.replace("Subber:", "").trim();
-  });
-
-  $(".bixbox .genxed a").each((_, el) => {
-    detail.genres.push($(el).text().trim());
-  });
-
-  detail.sinopsis = $(".bixbox .desc").text().trim();
-
-  const tempEpisodes: Array<{
-    title: string;
-    url: string;
-    date: string | null;
-  }> = [];
-  $(".eplister ul li, .listeps ul li").each((_, el) => {
-    const episodeTitle = $(el)
-      .find(".epl-title, .lchx a")
-      .text()
-      .trim();
-    const episodeLink = $(el).find("a").attr("href");
-    const episodeDate = $(el).find(".epl-date, .date").text().trim();
-
-    if (episodeTitle && episodeLink) {
-      tempEpisodes.push({
-        title: episodeTitle,
-        url: episodeLink.startsWith("http")
-          ? episodeLink
-          : `${BASE_URL}${episodeLink}`,
-        date: episodeDate || null,
-      });
-    }
-  });
-
-  tempEpisodes.reverse();
-
-  detail.episodes = tempEpisodes.map((ep, index) => ({
-    number: index + 1,
-    title: ep.title,
-    url: ep.url,
-    slug: extractSlugFromUrl(ep.url),
-    date: ep.date,
-  }));
-
-  if (!detail.totalEpisodes || detail.totalEpisodes === "") {
-    detail.totalEpisodes = detail.episodes.length;
+  if (!data?.result) {
+    throw new Error(data?.error ?? `Detail not found for slug: ${slug}`);
   }
 
-  return detail;
+  const r = data.result;
+
+  const rawEpisodes = Array.isArray(r.episodes) ? r.episodes : [];
+  const episodes: Episode[] = rawEpisodes.map((raw, idx) => {
+    const ep = (typeof raw === "object" && raw !== null ? raw : {}) as AxlyEpisode;
+    const url = str(ep.url);
+    const fullUrl = url.startsWith("http") ? url : `https://anichin.moe${url}`;
+    return {
+      number: typeof ep.number === "number" ? ep.number : idx + 1,
+      title: str(ep.title),
+      url: fullUrl,
+      slug: str(ep.slug) || slugFromUrl(url),
+      date: typeof ep.date === "string" ? ep.date : null,
+    };
+  });
+
+  const totalEps = r.totalEpisodes;
+  const totalEpisodes: string | number =
+    typeof totalEps === "string" || typeof totalEps === "number"
+      ? totalEps
+      : episodes.length;
+
+  return {
+    title: str(r.title),
+    alternative: str(r.alternative),
+    rating: str(r.rating),
+    status: str(r.status),
+    type: str(r.type),
+    studio: str(r.studio),
+    network: str(r.network),
+    releaseDate: str(r.releaseDate),
+    duration: str(r.duration),
+    season: str(r.season),
+    country: str(r.country),
+    totalEpisodes,
+    subber: str(r.subber),
+    genres: Array.isArray(r.genres)
+      ? r.genres.filter((g): g is string => typeof g === "string")
+      : [],
+    sinopsis: str(r.sinopsis),
+    cover: typeof r.cover === "string" ? r.cover : null,
+    episodes,
+  };
 }
 
 export async function scrapeStream(slug: string): Promise<StreamInfo> {
-  const url = `${BASE_URL}/${slug}/`;
-  const $ = await fetchPage(url);
+  const { data } = await http.get<AxlyStreamResponse>(
+    `/stream?slug=${encodeURIComponent(slug)}`
+  );
 
-  let streamUrl: string | null = null;
-  let videoId: string | null = null;
-  let source: string | null = null;
-
-  // 1. Dailymotion iframe
-  $('iframe[src*="dailymotion.com"]').each((_, el) => {
-    const src = $(el).attr("src");
-    if (src) {
-      const match = src.match(/video=([a-zA-Z0-9]+)/);
-      if (match) {
-        videoId = match[1];
-        streamUrl = `https://www.dailymotion.com/embed/video/${videoId}?autoplay=1&queue-enable=false`;
-        source = "Dailymotion";
-      }
-      return false as unknown as void;
-    }
-  });
-
-  // 2. OK.ru iframe
-  if (!streamUrl) {
-    $('iframe[src*="ok.ru"]').each((_, el) => {
-      const src = $(el).attr("src");
-      if (src) {
-        streamUrl = src;
-        source = "OK.ru";
-        const match = src.match(/videoembed\/(\d+)/);
-        if (match) videoId = match[1];
-        return false as unknown as void;
-      }
-    });
+  if (!data?.status || !data?.result) {
+    throw new Error(data?.error ?? `Stream not found for slug: ${slug}`);
   }
 
-  // 3. Rumble iframe
-  if (!streamUrl) {
-    $('iframe[src*="rumble.com"]').each((_, el) => {
-      const src = $(el).attr("src");
-      if (src) {
-        streamUrl = src;
-        source = "Rumble";
-        const match = src.match(/embed\/([a-zA-Z0-9]+)/);
-        if (match) videoId = match[1];
-        return false as unknown as void;
-      }
-    });
-  }
-
-  // 4. YouTube iframe
-  if (!streamUrl) {
-    $('iframe[src*="youtube.com"], iframe[src*="youtu.be"]').each((_, el) => {
-      const src = $(el).attr("src");
-      if (src) {
-        streamUrl = src;
-        source = "YouTube";
-        const match = src.match(/embed\/([a-zA-Z0-9_-]+)/);
-        if (match) videoId = match[1];
-        return false as unknown as void;
-      }
-    });
-  }
-
-  // 5. Fallback: Dailymotion anchor links
-  if (!streamUrl) {
-    $('a[href*="dailymotion.com"]').each((_, el) => {
-      const href = $(el).attr("href");
-      if (href) {
-        const match = href.match(/dailymotion\.com\/video\/([a-zA-Z0-9]+)/);
-        if (match) {
-          videoId = match[1];
-          streamUrl = `https://www.dailymotion.com/embed/video/${videoId}?ui=0&autoplay=1`;
-          source = "Dailymotion";
-        }
-        return false as unknown as void;
-      }
-    });
-  }
-
-  // 6. Fallback: OK.ru anchor links
-  if (!streamUrl) {
-    $('a[href*="ok.ru"]').each((_, el) => {
-      const href = $(el).attr("href");
-      if (href) {
-        const match = href.match(/ok\.ru\/video\/(\d+)/);
-        if (match) {
-          videoId = match[1];
-          streamUrl = `https://ok.ru/videoembed/${videoId}`;
-          source = "OK.ru";
-        }
-        return false as unknown as void;
-      }
-    });
-  }
-
-  if (!streamUrl || !source) {
-    throw new Error("Stream URL not found");
-  }
-
-  const title = $(".entry-title").text().trim() || "Donghua Episode";
-
-  // Explicit string type to prevent control-flow never inference
-  const finalSource: string = source;
-  const finalStreamUrl: string = streamUrl;
-
-  let watchUrl: string = finalStreamUrl;
-  if (finalSource === "OK.ru" && videoId) {
-    watchUrl = `https://ok.ru/video/${videoId}`;
-  } else if (finalSource === "Dailymotion" && videoId) {
-    watchUrl = `https://www.dailymotion.com/video/${videoId}`;
-  }
-
+  const r = data.result;
   return {
-    title,
-    source: finalSource,
-    video_id: videoId,
-    embed_url: finalStreamUrl,
-    watch_url: watchUrl,
+    title: str(r.title, "Donghua Episode"),
+    source: str(r.source),
+    video_id: typeof r.video_id === "string" ? r.video_id : null,
+    embed_url: str(r.embed_url),
+    watch_url: str(r.watch_url),
   };
 }
 
 export async function scrapeSchedule(): Promise<
   Record<string, ScheduleItem[]>
 > {
-  const $ = await fetchPage(`${BASE_URL}/schedule/`);
+  const { data } = await http.get<AxlyScheduleResponse>("/schedule");
+
+  const raw = typeof data?.result === "object" && data.result !== null
+    ? data.result
+    : {};
+
   const schedule: Record<string, ScheduleItem[]> = {};
 
-  $(".listSchh").each((_, el) => {
-    const day = $(el).find("h2").text().trim();
-    const animes: ScheduleItem[] = [];
-
-    $(el)
-      .find(".subSchh a")
-      .each((_, a) => {
-        const title = $(a).text().trim();
-        const href = $(a).attr("href") || "";
-        const slug = extractSlugFromUrl(href);
-        const url = href.startsWith("http") ? href : `${BASE_URL}${href}`;
-        animes.push({
-          title: title.replace("[SVIP] ", ""),
-          slug,
-          url,
-          is_vip: title.includes("[SVIP]"),
-        });
-      });
-
-    if (animes.length > 0) {
-      schedule[day] = animes;
-    }
-  });
+  for (const [day, items] of Object.entries(raw)) {
+    if (!Array.isArray(items)) continue;
+    schedule[day] = items.map((raw) => {
+      const item = (typeof raw === "object" && raw !== null ? raw : {}) as {
+        title?: unknown; slug?: unknown; url?: unknown; is_vip?: unknown;
+      };
+      const url = str(item.url);
+      return {
+        title: str(item.title),
+        slug: str(item.slug) || slugFromUrl(url),
+        url,
+        is_vip: typeof item.is_vip === "boolean" ? item.is_vip : false,
+      };
+    });
+  }
 
   return schedule;
 }
