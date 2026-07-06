@@ -37,7 +37,7 @@ export default function Watch() {
     { query: { enabled: !!seriesSlug, queryKey: getGetDonghuaDetailQueryKey({ slug: seriesSlug }) } }
   );
 
-  const { data: serversData } = useGetServers(
+  const { data: serversData, isLoading: serversLoading } = useGetServers(
     { slug: episodeSlug },
     { query: { enabled: !!episodeSlug, queryKey: getGetServersQueryKey({ slug: episodeSlug }) } }
   );
@@ -136,26 +136,34 @@ export default function Watch() {
             </div>
 
             {/* Server Selector — right below the video */}
-            {!streamLoading && servers.length > 0 && (
+            {!streamLoading && (serversLoading || servers.length > 0) && (
               <div className="bg-muted/20 border-t border-border px-3 py-2.5 flex flex-wrap gap-1.5 items-center">
                 <div className="flex items-center gap-1.5 text-xs text-muted-foreground font-medium shrink-0 mr-1">
                   <Server className="w-3.5 h-3.5" />
                   <span>Pilihan Server:</span>
                 </div>
-                {servers.map((server, idx) => (
-                  <button
-                    key={idx}
-                    onClick={() => setSelectedServer(idx)}
-                    className={cn(
-                      "px-2.5 py-1 rounded-md text-xs font-medium transition-all shrink-0",
-                      selectedServer === idx
-                        ? "bg-primary text-primary-foreground shadow-sm"
-                        : "bg-secondary hover:bg-secondary/70 text-foreground"
-                    )}
-                  >
-                    {getServerName(server)}
-                  </button>
-                ))}
+                {serversLoading ? (
+                  <div className="flex items-center gap-1.5">
+                    {[1, 2, 3].map((i) => (
+                      <div key={i} className="h-6 w-16 rounded-md bg-secondary animate-pulse" />
+                    ))}
+                  </div>
+                ) : (
+                  servers.map((server, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => setSelectedServer(idx)}
+                      className={cn(
+                        "px-2.5 py-1 rounded-md text-xs font-medium transition-all shrink-0",
+                        selectedServer === idx
+                          ? "bg-primary text-primary-foreground shadow-sm"
+                          : "bg-secondary hover:bg-secondary/70 text-foreground"
+                      )}
+                    >
+                      {getServerName(server)}
+                    </button>
+                  ))
+                )}
               </div>
             )}
 
