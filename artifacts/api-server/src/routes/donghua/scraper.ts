@@ -143,6 +143,21 @@ interface AxlyStreamResponse {
   };
 }
 
+interface AxlyServersResponse {
+  status: boolean;
+  error?: string;
+  result?: {
+    title?: unknown;
+    slug?: unknown;
+    total_servers?: number;
+    servers?: Array<{
+      label?: unknown;
+      embed_url?: unknown;
+      is_ads?: unknown;
+    }>;
+  };
+}
+
 interface AxlyScheduleResponse {
   status: boolean;
   result?: Record<string, unknown[]>;
@@ -308,62 +323,48 @@ export async function scrapeDetail(slug: string): Promise<DonghuaDetail> {
 }
 
 export async function scrapeStream(slug: string): Promise<StreamInfo> {
-  // Fetch axly API info and anichin episode page in parallel
-  const [axlyRes, pageRes] = await Promise.allSettled([
+  // Call /stream (basic info) and /servers (all mirror options) in parallel
+  const [streamRes, serversRes] = await Promise.allSettled([
     http.get<AxlyStreamResponse>(`/stream?slug=${encodeURIComponent(slug)}`),
-    httpDirect.get<string>(`/${slug}/`, { responseType: "text" }),
+    http.get<AxlyServersResponse>(`/servers?slug=${encodeURIComponent(slug)}`),
   ]);
 
-  // Extract basic metadata from axly (title, source, etc.)
+  // Basic metadata from /stream
   let title = "Donghua Episode";
   let source = "";
   let video_id: string | null = null;
   let watch_url = `${ANICHIN_BASE}/${slug}/`;
 
-  if (axlyRes.status === "fulfilled" && axlyRes.value.data?.status && axlyRes.value.data?.result) {
-    const r = axlyRes.value.data.result;
+  if (streamRes.status === "fulfilled" && streamRes.value.data?.status && streamRes.value.data?.result) {
+    const r = streamRes.value.data.result;
     title = str(r.title, "Donghua Episode");
     source = str(r.source);
     video_id = typeof r.video_id === "string" ? r.video_id : null;
     watch_url = str(r.watch_url) || watch_url;
   }
 
-  // Parse mirror servers from <select class="mirror"> on the episode page
+  // Build servers list from /servers endpoint
   const servers: VideoServer[] = [];
-  if (pageRes.status === "fulfilled") {
-    try {
-      const $ = cheerio.load(pageRes.value.data);
-      $("select.mirror option").each((_, el) => {
-        const b64 = $(el).attr("value") ?? "";
-        const name = $(el).text().trim();
-        if (!b64 || !name || name.toLowerCase().includes("pilih server")) return;
-        try {
-          const iframeHtml = Buffer.from(b64, "base64").toString("utf-8");
-          const $iframe = cheerio.load(iframeHtml);
-          const src = $iframe("iframe").attr("src") ?? "";
-          if (src) servers.push({ name, embed_url: src });
-        } catch { /* skip invalid base64 */ }
-      });
-    } catch { /* skip cheerio errors */ }
+  if (serversRes.status === "fulfilled" && serversRes.value.data?.status && serversRes.value.data?.result?.servers) {
+    for (const s of serversRes.value.data.result.servers) {
+      const name = typeof s.label === "string" ? s.label.trim() : "";
+      const embed_url = typeof s.embed_url === "string" ? s.embed_url.trim() : "";
+      if (name && embed_url) servers.push({ name, embed_url });
+    }
+    // Use title from /servers if /stream failed
+    if (title === "Donghua Episode" && serversRes.value.data.result.title) {
+      title = str(serversRes.value.data.result.title, "Donghua Episode");
+    }
   }
 
-  // If axly had no data but we got servers from the page, still need title
-  if (axlyRes.status === "rejected" && servers.length === 0) {
-    throw new Error(`Stream not found for slug: ${slug}`);
-  }
-
-  // Primary embed_url: first server from page, fallback to axly's embed_url
-  const axlyEmbed = axlyRes.status === "fulfilled"
-    ? str(axlyRes.value.data?.result?.embed_url)
+  // Primary embed_url: first server, fallback to /stream embed_url
+  const streamEmbed = streamRes.status === "fulfilled"
+    ? str(streamRes.value.data?.result?.embed_url)
     : "";
-  const embed_url = servers[0]?.embed_url || axlyEmbed;
+  const embed_url = servers[0]?.embed_url || streamEmbed;
 
-  // If nothing found at all, surface axly error
   if (!embed_url && servers.length === 0) {
-    const errMsg = axlyRes.status === "fulfilled"
-      ? (axlyRes.value.data?.error ?? `Stream not found for slug: ${slug}`)
-      : `Stream not found for slug: ${slug}`;
-    throw new Error(errMsg);
+    throw new Error(`Stream not found for slug: ${slug}`);
   }
 
   return { title, source, video_id, embed_url, watch_url, servers };
