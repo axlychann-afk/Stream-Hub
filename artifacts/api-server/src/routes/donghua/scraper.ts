@@ -66,12 +66,18 @@ export interface DonghuaDetail {
   episodes: Episode[];
 }
 
+export interface VideoServer {
+  name: string;
+  embed_url: string;
+}
+
 export interface StreamInfo {
   title: string;
   source: string;
   video_id: string | null;
   embed_url: string;
   watch_url: string;
+  servers: VideoServer[];
 }
 
 export interface ScheduleItem {
@@ -302,22 +308,65 @@ export async function scrapeDetail(slug: string): Promise<DonghuaDetail> {
 }
 
 export async function scrapeStream(slug: string): Promise<StreamInfo> {
-  const { data } = await http.get<AxlyStreamResponse>(
-    `/stream?slug=${encodeURIComponent(slug)}`
-  );
+  // Fetch axly API info and anichin episode page in parallel
+  const [axlyRes, pageRes] = await Promise.allSettled([
+    http.get<AxlyStreamResponse>(`/stream?slug=${encodeURIComponent(slug)}`),
+    httpDirect.get<string>(`/${slug}/`, { responseType: "text" }),
+  ]);
 
-  if (!data?.status || !data?.result) {
-    throw new Error(data?.error ?? `Stream not found for slug: ${slug}`);
+  // Extract basic metadata from axly (title, source, etc.)
+  let title = "Donghua Episode";
+  let source = "";
+  let video_id: string | null = null;
+  let watch_url = `${ANICHIN_BASE}/${slug}/`;
+
+  if (axlyRes.status === "fulfilled" && axlyRes.value.data?.status && axlyRes.value.data?.result) {
+    const r = axlyRes.value.data.result;
+    title = str(r.title, "Donghua Episode");
+    source = str(r.source);
+    video_id = typeof r.video_id === "string" ? r.video_id : null;
+    watch_url = str(r.watch_url) || watch_url;
   }
 
-  const r = data.result;
-  return {
-    title: str(r.title, "Donghua Episode"),
-    source: str(r.source),
-    video_id: typeof r.video_id === "string" ? r.video_id : null,
-    embed_url: str(r.embed_url),
-    watch_url: str(r.watch_url),
-  };
+  // Parse mirror servers from <select class="mirror"> on the episode page
+  const servers: VideoServer[] = [];
+  if (pageRes.status === "fulfilled") {
+    try {
+      const $ = cheerio.load(pageRes.value.data);
+      $("select.mirror option").each((_, el) => {
+        const b64 = $(el).attr("value") ?? "";
+        const name = $(el).text().trim();
+        if (!b64 || !name || name.toLowerCase().includes("pilih server")) return;
+        try {
+          const iframeHtml = Buffer.from(b64, "base64").toString("utf-8");
+          const $iframe = cheerio.load(iframeHtml);
+          const src = $iframe("iframe").attr("src") ?? "";
+          if (src) servers.push({ name, embed_url: src });
+        } catch { /* skip invalid base64 */ }
+      });
+    } catch { /* skip cheerio errors */ }
+  }
+
+  // If axly had no data but we got servers from the page, still need title
+  if (axlyRes.status === "rejected" && servers.length === 0) {
+    throw new Error(`Stream not found for slug: ${slug}`);
+  }
+
+  // Primary embed_url: first server from page, fallback to axly's embed_url
+  const axlyEmbed = axlyRes.status === "fulfilled"
+    ? str(axlyRes.value.data?.result?.embed_url)
+    : "";
+  const embed_url = servers[0]?.embed_url || axlyEmbed;
+
+  // If nothing found at all, surface axly error
+  if (!embed_url && servers.length === 0) {
+    const errMsg = axlyRes.status === "fulfilled"
+      ? (axlyRes.value.data?.error ?? `Stream not found for slug: ${slug}`)
+      : `Stream not found for slug: ${slug}`;
+    throw new Error(errMsg);
+  }
+
+  return { title, source, video_id, embed_url, watch_url, servers };
 }
 
 export interface PopularItem {

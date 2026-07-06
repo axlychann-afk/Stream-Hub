@@ -63,6 +63,11 @@ export interface DetailResponse {
   result: DonghuaDetail;
 }
 
+export interface VideoServer {
+  name: string;
+  embed_url: string;
+}
+
 export interface StreamInfo {
   title: string;
   source: string;
@@ -70,6 +75,7 @@ export interface StreamInfo {
   video_id?: string | null;
   embed_url: string;
   watch_url: string;
+  servers: VideoServer[];
 }
 
 export interface StreamResponse {
