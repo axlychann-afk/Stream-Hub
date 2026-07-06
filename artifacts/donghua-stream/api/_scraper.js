@@ -1,59 +1,57 @@
-import axios from 'axios';
-import * as cheerio from 'cheerio';
+// Shared helper for Vercel serverless functions
+// Proxies to axlyapi.qzz.io instead of scraping anichin.moe directly
 
-export const BASE_URL = 'https://anichin.moe';
+export const AXLY_BASE = 'https://axlyapi.qzz.io/donghua';
 
-const HEADERS = {
-  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-  'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-  'Accept-Language': 'id-ID,id;q=0.9,en;q=0.8',
-  'Cache-Control': 'no-cache',
-};
-
-export async function fetchPage(url) {
-  const { data } = await axios.get(url, { headers: HEADERS, timeout: 8000 });
-  return cheerio.load(data);
+export function setCors(res) {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 }
 
-export function extractSlug(url) {
+/** Remove duplicated title text like "Foo BarFoo Bar" → "Foo Bar" */
+export function dedupeTitle(title) {
+  if (typeof title !== 'string') return '';
+  const half = Math.floor(title.length / 2);
+  if (title.length > 0 && title.length % 2 === 0 && title.slice(0, half) === title.slice(half)) {
+    return title.slice(0, half);
+  }
+  return title;
+}
+
+export function slugFromUrl(url) {
+  if (!url) return '';
   return url
     .replace(/^https?:\/\/[^/]+\//, '')
     .replace(/\/$/, '')
     .replace(/^\//, '');
 }
 
-export function parseItems($) {
-  const results = [];
-  const seen = new Set();
-  $('.listupd .bs').each((_, el) => {
-    const link = $(el).find('.bsx a').attr('href') || '';
-    const title = $(el).find('.tt').text().trim() || '';
-    const type = $(el).find('.typez').text().trim() || '';
-    const status = $(el).find('.epx').text().trim() || '';
-    const sub = $(el).find('.sb').text().trim() || '';
-    const thumbnail = $(el).find('img').attr('src') || null;
-    if (title && link) {
-      const fullUrl = link.startsWith('http') ? link : `${BASE_URL}${link}`;
-      if (!seen.has(fullUrl)) {
-        seen.add(fullUrl);
-        results.push({ title, slug: extractSlug(link), url: fullUrl, type, status, sub, thumbnail });
-      }
-    }
-  });
-  return results;
+/** Fetch from axlyapi with timeout */
+export async function axlyFetch(path) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 25000);
+  try {
+    const res = await fetch(`${AXLY_BASE}${path}`, {
+      signal: controller.signal,
+      headers: { 'User-Agent': 'DonghuaStream-Vercel/1.0' },
+    });
+    if (!res.ok) throw new Error(`Axly API error: ${res.status}`);
+    return await res.json();
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
-export async function scrapeList(urlPattern, page = 1) {
-  const url = urlPattern.replace('{page}', String(page));
-  const $ = await fetchPage(url);
-  const results = parseItems($);
-  const hasMore = $('.pagination .nextpage').length > 0;
-  return { results, hasMore };
-}
-
-export function setCors(res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  res.setHeader('Cache-Control', 's-maxage=120, stale-while-revalidate=60');
+/** Map a raw axly list item to clean shape */
+export function mapItem(item) {
+  return {
+    title: dedupeTitle(item.title),
+    slug: item.slug ?? '',
+    url: item.url ?? '',
+    type: item.type ?? '',
+    status: item.status ?? '',
+    sub: item.sub ?? '',
+    thumbnail: item.thumbnail ?? null,
+  };
 }

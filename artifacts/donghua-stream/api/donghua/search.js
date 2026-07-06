@@ -1,4 +1,4 @@
-import { fetchPage, parseItems, BASE_URL, setCors } from '../_scraper.js';
+import { axlyFetch, mapItem, setCors } from '../_scraper.js';
 
 export default async function handler(req, res) {
   setCors(res);
@@ -6,8 +6,8 @@ export default async function handler(req, res) {
   const q = String(req.query.q ?? '').trim();
   if (!q) return res.status(400).json({ status: false, error: 'Parameter "q" diperlukan' });
   try {
-    const $ = await fetchPage(`${BASE_URL}/?s=${encodeURIComponent(q)}`);
-    const results = parseItems($);
+    const data = await axlyFetch(`/search?q=${encodeURIComponent(q)}`);
+    const results = (data.results ?? []).map(mapItem);
     res.json({ status: true, total: results.length, page: 1, hasMore: false, results });
   } catch (err) {
     res.status(500).json({ status: false, error: err.message });

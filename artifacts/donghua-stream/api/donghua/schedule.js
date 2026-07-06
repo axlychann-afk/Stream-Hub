@@ -1,26 +1,21 @@
-import { fetchPage, extractSlug, BASE_URL, setCors } from '../_scraper.js';
+import { axlyFetch, slugFromUrl, setCors } from '../_scraper.js';
 
 export default async function handler(req, res) {
   setCors(res);
   if (req.method === 'OPTIONS') return res.status(200).end();
   try {
-    const $ = await fetchPage(`${BASE_URL}/schedule/`);
+    const data = await axlyFetch('/schedule');
+    const raw = data?.result ?? {};
     const schedule = {};
-    $('.listSchh').each((_, el) => {
-      const day = $(el).find('h2').text().trim();
-      const animes = [];
-      $(el).find('.subSchh a').each((_, a) => {
-        const title = $(a).text().trim();
-        const href = $(a).attr('href') || '';
-        animes.push({
-          title: title.replace('[SVIP] ', ''),
-          slug: extractSlug(href),
-          url: href.startsWith('http') ? href : `${BASE_URL}${href}`,
-          is_vip: title.includes('[SVIP]'),
-        });
-      });
-      if (animes.length > 0) schedule[day] = animes;
-    });
+    for (const [day, items] of Object.entries(raw)) {
+      if (!Array.isArray(items)) continue;
+      schedule[day] = items.map(item => ({
+        title: item.title ?? '',
+        slug: item.slug ?? slugFromUrl(item.url ?? ''),
+        url: item.url ?? '',
+        is_vip: item.is_vip ?? false,
+      }));
+    }
     res.json({ status: true, result: schedule });
   } catch (err) {
     res.status(500).json({ status: false, error: err.message });
