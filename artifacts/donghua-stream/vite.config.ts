@@ -51,11 +51,7 @@ export default defineConfig({
   },
   root: path.resolve(import.meta.dirname),
   build: {
-    // BUILD_OUT_DIR lets CI (Vercel) redirect output to the repo root dist/
-    // Use a path relative to this file's directory, e.g. "../../dist"
-    outDir: process.env.BUILD_OUT_DIR
-      ? path.resolve(import.meta.dirname, process.env.BUILD_OUT_DIR)
-      : path.resolve(import.meta.dirname, 'dist'),
+    outDir: path.resolve(import.meta.dirname, 'dist'),
     emptyOutDir: true,
   },
   server: {
