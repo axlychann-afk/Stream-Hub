@@ -13,6 +13,16 @@ import {
 
 const router = Router();
 
+// Rewrite thumbnail/cover URLs to go through our image proxy (bypasses hotlink protection)
+function proxyImg(url: string | null | undefined): string | null {
+  if (!url) return null;
+  return `/api/image-proxy?url=${encodeURIComponent(url)}`;
+}
+
+function proxyItems<T extends { thumbnail: string | null }>(items: T[]): T[] {
+  return items.map((item) => ({ ...item, thumbnail: proxyImg(item.thumbnail) }));
+}
+
 // Stale-while-revalidate cache
 // staleAt  = serve from cache but kick off a background refresh
 // expiresAt = hard expiry, must wait for fresh data
@@ -119,7 +129,7 @@ router.get("/ongoing", async (req, res) => {
     `ongoing:${page}`,
     async () => {
       const { results, hasMore } = await scrapeOngoing(page);
-      return { status: true, total: results.length, page, hasMore, results };
+      return { status: true, total: results.length, page, hasMore, results: proxyItems(results) };
     },
     600
   )(res, req.log);
@@ -131,7 +141,7 @@ router.get("/completed", async (req, res) => {
     `completed:${page}`,
     async () => {
       const { results, hasMore } = await scrapeCompleted(page);
-      return { status: true, total: results.length, page, hasMore, results };
+      return { status: true, total: results.length, page, hasMore, results: proxyItems(results) };
     },
     600
   )(res, req.log);
@@ -143,7 +153,7 @@ router.get("/drop", async (req, res) => {
     `drop:${page}`,
     async () => {
       const { results, hasMore } = await scrapeDropped(page);
-      return { status: true, total: results.length, page, hasMore, results };
+      return { status: true, total: results.length, page, hasMore, results: proxyItems(results) };
     },
     600
   )(res, req.log);
@@ -154,7 +164,7 @@ router.get("/upcoming", async (req, res) => {
     "upcoming",
     async () => {
       const { results, hasMore } = await scrapeUpcoming();
-      return { status: true, total: results.length, page: 1, hasMore, results };
+      return { status: true, total: results.length, page: 1, hasMore, results: proxyItems(results) };
     },
     1200
   )(res, req.log);
@@ -170,7 +180,7 @@ router.get("/search", async (req, res) => {
     `search:${q.toLowerCase()}`,
     async () => {
       const { results } = await scrapeSearch(q);
-      return { status: true, total: results.length, page: 1, hasMore: false, results };
+      return { status: true, total: results.length, page: 1, hasMore: false, results: proxyItems(results) };
     },
     300
   )(res, req.log);
@@ -200,7 +210,7 @@ router.get("/detail", async (req, res) => {
   }
   try {
     const detail = await scrapeDetail(slug);
-    const response = { status: true, result: detail };
+    const response = { status: true, result: { ...detail, cover: proxyImg(detail.cover) } };
     setCache(`detail:${slug}`, response, 600);
     res.json(response);
   } catch (err: unknown) {
@@ -264,9 +274,9 @@ router.get("/trending", async (req, res) => {
       ]);
       return {
         status: true,
-        ongoing: ongoingData.results.slice(0, 12),
-        completed: completedData.results.slice(0, 12),
-        upcoming: upcomingData.results.slice(0, 8),
+        ongoing: proxyItems(ongoingData.results.slice(0, 12)),
+        completed: proxyItems(completedData.results.slice(0, 12)),
+        upcoming: proxyItems(upcomingData.results.slice(0, 8)),
       };
     },
     600
