@@ -12,212 +12,195 @@ import {
 
 const router = Router();
 
-// In-memory cache to avoid hammering source site
-const cache = new Map<string, { data: unknown; expiresAt: number }>();
+// Stale-while-revalidate cache
+// staleAt  = serve from cache but kick off a background refresh
+// expiresAt = hard expiry, must wait for fresh data
+const cache = new Map<string, { data: unknown; staleAt: number; expiresAt: number }>();
+const revalidating = new Set<string>();
 
-function getCached<T>(key: string): T | null {
+function getCached<T>(key: string): { data: T; isStale: boolean } | null {
   const entry = cache.get(key);
-  if (entry && entry.expiresAt > Date.now()) {
-    return entry.data as T;
-  }
-  return null;
+  if (!entry) return null;
+  const now = Date.now();
+  if (now > entry.expiresAt) return null; // hard expired, must refetch
+  return { data: entry.data as T, isStale: now > entry.staleAt };
 }
 
-function setCache(key: string, data: unknown, ttlSeconds = 120): void {
-  cache.set(key, { data, expiresAt: Date.now() + ttlSeconds * 1000 });
+function setCache(key: string, data: unknown, ttlSeconds = 600): void {
+  // Fresh for half the TTL, stale-but-usable for the full TTL
+  const now = Date.now();
+  cache.set(key, {
+    data,
+    staleAt: now + (ttlSeconds / 2) * 1000,
+    expiresAt: now + ttlSeconds * 1000,
+  });
+}
+
+/** Run a background revalidation for a cache key without blocking the response. */
+function revalidate(key: string, fetcher: () => Promise<unknown>): void {
+  if (revalidating.has(key)) return;
+  revalidating.add(key);
+  fetcher()
+    .then((data) => setCache(key, data))
+    .catch(() => { /* silently keep stale */ })
+    .finally(() => revalidating.delete(key));
+}
+
+/** Warm up the most-requested cache keys at startup so users never hit a cold cache. */
+export async function warmCache(): Promise<void> {
+  const keys: Array<{ key: string; fetcher: () => Promise<unknown> }> = [
+    {
+      key: "trending",
+      fetcher: async () => {
+        const [ongoingData, completedData, upcomingData] = await Promise.all([
+          scrapeOngoing(1),
+          scrapeCompleted(1),
+          scrapeUpcoming(),
+        ]);
+        return {
+          status: true,
+          ongoing: ongoingData.results.slice(0, 12),
+          completed: completedData.results.slice(0, 12),
+          upcoming: upcomingData.results.slice(0, 8),
+        };
+      },
+    },
+    {
+      key: "ongoing:1",
+      fetcher: async () => {
+        const { results, hasMore } = await scrapeOngoing(1);
+        return { status: true, total: results.length, page: 1, hasMore, results };
+      },
+    },
+    {
+      key: "schedule",
+      fetcher: async () => {
+        const schedule = await scrapeSchedule();
+        return { status: true, result: schedule };
+      },
+    },
+  ];
+
+  await Promise.allSettled(keys.map(({ key, fetcher }) =>
+    fetcher().then((data) => setCache(key, data)).catch(() => {})
+  ));
 }
 
 // GET /api/donghua/ongoing?page=1
+// ── Helper: serve from cache with stale-while-revalidate ──────────────────────
+function swr<T>(
+  cacheKey: string,
+  fetcher: () => Promise<T>,
+  ttlSeconds: number
+): (res: import("express").Response, log: import("pino").Logger) => Promise<void> {
+  return async (res, log) => {
+    const hit = getCached<T>(cacheKey);
+    if (hit) {
+      res.json(hit.data);
+      if (hit.isStale) revalidate(cacheKey, fetcher);
+      return;
+    }
+    try {
+      const data = await fetcher();
+      setCache(cacheKey, data, ttlSeconds);
+      res.json(data);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Unknown error";
+      log.error({ err }, `Cache miss + fetch failed for ${cacheKey}`);
+      res.status(500).json({ status: false, error: message });
+    }
+  };
+}
+
 router.get("/ongoing", async (req, res) => {
   const page = Math.max(1, parseInt(String(req.query.page ?? "1"), 10));
-  const cacheKey = `ongoing:${page}`;
-
-  const cached = getCached(cacheKey);
-  if (cached) {
-    res.json(cached);
-    return;
-  }
-
-  try {
-    const { results, hasMore } = await scrapeOngoing(page);
-    const response = {
-      status: true,
-      total: results.length,
-      page,
-      hasMore,
-      results,
-    };
-    setCache(cacheKey, response, 180);
-    res.json(response);
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "Unknown error";
-    req.log.error({ err }, "Failed to scrape ongoing");
-    res.status(500).json({ status: false, error: message });
-  }
+  await swr(
+    `ongoing:${page}`,
+    async () => {
+      const { results, hasMore } = await scrapeOngoing(page);
+      return { status: true, total: results.length, page, hasMore, results };
+    },
+    600
+  )(res, req.log);
 });
 
-// GET /api/donghua/completed?page=1
 router.get("/completed", async (req, res) => {
   const page = Math.max(1, parseInt(String(req.query.page ?? "1"), 10));
-  const cacheKey = `completed:${page}`;
-
-  const cached = getCached(cacheKey);
-  if (cached) {
-    res.json(cached);
-    return;
-  }
-
-  try {
-    const { results, hasMore } = await scrapeCompleted(page);
-    const response = {
-      status: true,
-      total: results.length,
-      page,
-      hasMore,
-      results,
-    };
-    setCache(cacheKey, response, 300);
-    res.json(response);
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "Unknown error";
-    req.log.error({ err }, "Failed to scrape completed");
-    res.status(500).json({ status: false, error: message });
-  }
+  await swr(
+    `completed:${page}`,
+    async () => {
+      const { results, hasMore } = await scrapeCompleted(page);
+      return { status: true, total: results.length, page, hasMore, results };
+    },
+    600
+  )(res, req.log);
 });
 
-// GET /api/donghua/drop?page=1
 router.get("/drop", async (req, res) => {
   const page = Math.max(1, parseInt(String(req.query.page ?? "1"), 10));
-  const cacheKey = `drop:${page}`;
-
-  const cached = getCached(cacheKey);
-  if (cached) {
-    res.json(cached);
-    return;
-  }
-
-  try {
-    const { results, hasMore } = await scrapeDropped(page);
-    const response = {
-      status: true,
-      total: results.length,
-      page,
-      hasMore,
-      results,
-    };
-    setCache(cacheKey, response, 300);
-    res.json(response);
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "Unknown error";
-    req.log.error({ err }, "Failed to scrape dropped");
-    res.status(500).json({ status: false, error: message });
-  }
+  await swr(
+    `drop:${page}`,
+    async () => {
+      const { results, hasMore } = await scrapeDropped(page);
+      return { status: true, total: results.length, page, hasMore, results };
+    },
+    600
+  )(res, req.log);
 });
 
-// GET /api/donghua/upcoming
 router.get("/upcoming", async (req, res) => {
-  const cacheKey = "upcoming";
-
-  const cached = getCached(cacheKey);
-  if (cached) {
-    res.json(cached);
-    return;
-  }
-
-  try {
-    const { results, hasMore } = await scrapeUpcoming();
-    const response = {
-      status: true,
-      total: results.length,
-      page: 1,
-      hasMore,
-      results,
-    };
-    setCache(cacheKey, response, 600);
-    res.json(response);
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "Unknown error";
-    req.log.error({ err }, "Failed to scrape upcoming");
-    res.status(500).json({ status: false, error: message });
-  }
+  await swr(
+    "upcoming",
+    async () => {
+      const { results, hasMore } = await scrapeUpcoming();
+      return { status: true, total: results.length, page: 1, hasMore, results };
+    },
+    1200
+  )(res, req.log);
 });
 
-// GET /api/donghua/search?q=keyword
 router.get("/search", async (req, res) => {
   const q = String(req.query.q ?? "").trim();
   if (!q) {
     res.status(400).json({ status: false, error: 'Parameter "q" diperlukan' });
     return;
   }
-
-  const cacheKey = `search:${q.toLowerCase()}`;
-  const cached = getCached(cacheKey);
-  if (cached) {
-    res.json(cached);
-    return;
-  }
-
-  try {
-    const { results } = await scrapeSearch(q);
-    const response = {
-      status: true,
-      total: results.length,
-      page: 1,
-      hasMore: false,
-      results,
-    };
-    setCache(cacheKey, response, 120);
-    res.json(response);
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "Unknown error";
-    req.log.error({ err }, "Failed to search");
-    res.status(500).json({ status: false, error: message });
-  }
+  await swr(
+    `search:${q.toLowerCase()}`,
+    async () => {
+      const { results } = await scrapeSearch(q);
+      return { status: true, total: results.length, page: 1, hasMore: false, results };
+    },
+    300
+  )(res, req.log);
 });
 
-// GET /api/donghua/schedule
 router.get("/schedule", async (req, res) => {
-  const cacheKey = "schedule";
-
-  const cached = getCached(cacheKey);
-  if (cached) {
-    res.json(cached);
-    return;
-  }
-
-  try {
-    const schedule = await scrapeSchedule();
-    const response = { status: true, result: schedule };
-    setCache(cacheKey, response, 3600);
-    res.json(response);
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "Unknown error";
-    req.log.error({ err }, "Failed to scrape schedule");
-    res.status(500).json({ status: false, error: message });
-  }
+  await swr(
+    "schedule",
+    async () => {
+      const schedule = await scrapeSchedule();
+      return { status: true, result: schedule };
+    },
+    7200
+  )(res, req.log);
 });
 
-// GET /api/donghua/detail?slug=series-slug
 router.get("/detail", async (req, res) => {
   const slug = String(req.query.slug ?? "").trim();
   if (!slug) {
-    res
-      .status(400)
-      .json({ status: false, error: 'Parameter "slug" diperlukan' });
+    res.status(400).json({ status: false, error: 'Parameter "slug" diperlukan' });
     return;
   }
-
-  const cacheKey = `detail:${slug}`;
-  const cached = getCached(cacheKey);
-  if (cached) {
-    res.json(cached);
+  const hit = getCached<unknown>(`detail:${slug}`);
+  if (hit) {
+    res.json(hit.data);
     return;
   }
-
   try {
     const detail = await scrapeDetail(slug);
     const response = { status: true, result: detail };
-    setCache(cacheKey, response, 300);
+    setCache(`detail:${slug}`, response, 600);
     res.json(response);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unknown error";
@@ -226,27 +209,21 @@ router.get("/detail", async (req, res) => {
   }
 });
 
-// GET /api/donghua/stream?slug=episode-slug
 router.get("/stream", async (req, res) => {
   const slug = String(req.query.slug ?? "").trim();
   if (!slug) {
-    res
-      .status(400)
-      .json({ status: false, error: 'Parameter "slug" diperlukan' });
+    res.status(400).json({ status: false, error: 'Parameter "slug" diperlukan' });
     return;
   }
-
-  const cacheKey = `stream:${slug}`;
-  const cached = getCached(cacheKey);
-  if (cached) {
-    res.json(cached);
+  const hit = getCached<unknown>(`stream:${slug}`);
+  if (hit) {
+    res.json(hit.data);
     return;
   }
-
   try {
     const stream = await scrapeStream(slug);
     const response = { status: true, result: stream };
-    setCache(cacheKey, response, 3600);
+    setCache(`stream:${slug}`, response, 7200);
     res.json(response);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unknown error";
@@ -257,35 +234,23 @@ router.get("/stream", async (req, res) => {
 
 // GET /api/donghua/trending — homepage hero data
 router.get("/trending", async (req, res) => {
-  const cacheKey = "trending";
-
-  const cached = getCached(cacheKey);
-  if (cached) {
-    res.json(cached);
-    return;
-  }
-
-  try {
-    // Fetch first page of ongoing + a few completed in parallel
-    const [ongoingData, completedData, upcomingData] = await Promise.all([
-      scrapeOngoing(1),
-      scrapeCompleted(1),
-      scrapeUpcoming(),
-    ]);
-
-    const response = {
-      status: true,
-      ongoing: ongoingData.results.slice(0, 12),
-      completed: completedData.results.slice(0, 12),
-      upcoming: upcomingData.results.slice(0, 8),
-    };
-    setCache(cacheKey, response, 300);
-    res.json(response);
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "Unknown error";
-    req.log.error({ err }, "Failed to get trending");
-    res.status(500).json({ status: false, error: message });
-  }
+  await swr(
+    "trending",
+    async () => {
+      const [ongoingData, completedData, upcomingData] = await Promise.all([
+        scrapeOngoing(1),
+        scrapeCompleted(1),
+        scrapeUpcoming(),
+      ]);
+      return {
+        status: true,
+        ongoing: ongoingData.results.slice(0, 12),
+        completed: completedData.results.slice(0, 12),
+        upcoming: upcomingData.results.slice(0, 8),
+      };
+    },
+    600
+  )(res, req.log);
 });
 
 export default router;
