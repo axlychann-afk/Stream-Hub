@@ -30,6 +30,6 @@ export function useGetPopular() {
   return useQuery<PopularResponse>({
     queryKey: ["popular"],
     queryFn: fetchPopular,
-    staleTime: 5 * 60 * 1000,
+    staleTime: 0,
   });
 }

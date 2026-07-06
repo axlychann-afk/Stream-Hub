@@ -239,7 +239,14 @@ router.get("/popular", async (req, res) => {
     "popular",
     async () => {
       const results = await scrapePopular();
-      return { status: true, total: results.length, results };
+      // Rewrite image URLs to go through our image proxy (bypasses hotlink protection)
+      const proxied = results.map((item) => ({
+        ...item,
+        image: item.image
+          ? `/api/image-proxy?url=${encodeURIComponent(item.image)}`
+          : null,
+      }));
+      return { status: true, total: proxied.length, results: proxied };
     },
     300
   )(res, req.log);
