@@ -7,10 +7,13 @@ export default async function handler(req, res) {
     const data = await axlyFetch('/popular');
     const list = data?.result?.list ?? [];
     const host = `https://${req.headers.host}`;
-    const results = list.map((item) => ({
-      title: typeof item.title === 'string' ? item.title : '',
+    const results = list.map((item) => {
+      const rawSlug = typeof item.slug === 'string' ? item.slug : '';
+      const seriesSlug = rawSlug.replace(/-episode-\d+.*$/, '');
+      return {
+      title: typeof item.short_title === 'string' && item.short_title ? item.short_title : (typeof item.title === 'string' ? item.title : ''),
       short_title: typeof item.short_title === 'string' ? item.short_title : '',
-      slug: typeof item.slug === 'string' ? item.slug : '',
+      slug: seriesSlug,
       url: typeof item.url === 'string' ? item.url : '',
       episode: typeof item.episode === 'string' ? item.episode : '',
       type: typeof item.type === 'string' ? item.type : '',
@@ -21,7 +24,8 @@ export default async function handler(req, res) {
         : null,
       image_alt: typeof item.image_alt === 'string' ? item.image_alt : '',
       rel: typeof item.rel === 'string' ? item.rel : '',
-    }));
+      };
+    });
     res.json({ status: true, total: results.length, results });
   } catch (err) {
     res.status(500).json({ status: false, error: err.message });

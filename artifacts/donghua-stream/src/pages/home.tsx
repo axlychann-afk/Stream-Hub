@@ -60,8 +60,8 @@ export default function Home() {
   const upcoming     = trending?.upcoming ?? [];
 
   const popularToday = (popularData?.results ?? []).map((item) => ({
-    title: item.title,
-    slug: item.slug,
+    title: item.short_title || item.title,
+    slug: item.slug.replace(/-episode-\d+.*$/, ""),
     url: item.url,
     type: item.type,
     status: "Ongoing",
