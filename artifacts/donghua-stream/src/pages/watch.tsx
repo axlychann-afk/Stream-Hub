@@ -92,30 +92,6 @@ export default function Watch() {
               )}
             </div>
 
-            {/* Server Selector */}
-            {!streamLoading && servers.length > 0 && (
-              <div className="bg-card/95 border-t border-border px-3 py-2.5 flex flex-wrap gap-1.5 items-center">
-                <div className="flex items-center gap-1.5 text-xs text-muted-foreground font-medium shrink-0 mr-1">
-                  <Server className="w-3.5 h-3.5" />
-                  <span>Server:</span>
-                </div>
-                {servers.map((server, idx) => (
-                  <button
-                    key={idx}
-                    onClick={() => setSelectedServer(idx)}
-                    className={cn(
-                      "px-2.5 py-1 rounded-md text-xs font-medium transition-all shrink-0",
-                      selectedServer === idx
-                        ? "bg-primary text-primary-foreground shadow-sm"
-                        : "bg-secondary hover:bg-secondary/70 text-foreground"
-                    )}
-                  >
-                    {server.name}
-                  </button>
-                ))}
-              </div>
-            )}
-
             {/* Player Controls Bar */}
             <div className="bg-card/90 border-t border-border p-3 flex flex-row items-center justify-between gap-3 min-w-0">
               <div className="flex-1 min-w-0 overflow-hidden">
@@ -160,6 +136,30 @@ export default function Watch() {
                 </Link>
               </div>
             </div>
+
+            {/* Server Selector — di bawah judul */}
+            {!streamLoading && servers.length > 0 && (
+              <div className="bg-muted/20 border-t border-border px-3 py-2.5 flex flex-wrap gap-1.5 items-center">
+                <div className="flex items-center gap-1.5 text-xs text-muted-foreground font-medium shrink-0 mr-1">
+                  <Server className="w-3.5 h-3.5" />
+                  <span>Pilihan Server:</span>
+                </div>
+                {servers.map((server, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => setSelectedServer(idx)}
+                    className={cn(
+                      "px-2.5 py-1 rounded-md text-xs font-medium transition-all shrink-0",
+                      selectedServer === idx
+                        ? "bg-primary text-primary-foreground shadow-sm"
+                        : "bg-secondary hover:bg-secondary/70 text-foreground"
+                    )}
+                  >
+                    {server.name}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Sidebar Playlist */}
