@@ -7,6 +7,8 @@ import {
   scrapeSearch,
   scrapeDetail,
   scrapeStream,
+  scrapeServers,
+  scrapeDownload,
   scrapeSchedule,
   scrapePopular,
 } from "./scraper.js";
@@ -48,11 +50,11 @@ function setCache(key: string, data: unknown, ttlSeconds = 600): void {
 }
 
 /** Run a background revalidation for a cache key without blocking the response. */
-function revalidate(key: string, fetcher: () => Promise<unknown>): void {
+function revalidate(key: string, fetcher: () => Promise<unknown>, ttlSeconds: number): void {
   if (revalidating.has(key)) return;
   revalidating.add(key);
   fetcher()
-    .then((data) => setCache(key, data))
+    .then((data) => setCache(key, data, ttlSeconds))
     .catch(() => { /* silently keep stale */ })
     .finally(() => revalidating.delete(key));
 }
@@ -108,7 +110,7 @@ function swr<T>(
     const hit = getCached<T>(cacheKey);
     if (hit) {
       res.json(hit.data);
-      if (hit.isStale) revalidate(cacheKey, fetcher);
+      if (hit.isStale) revalidate(cacheKey, fetcher, ttlSeconds);
       return;
     }
     try {
@@ -216,6 +218,60 @@ router.get("/detail", async (req, res) => {
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unknown error";
     req.log.error({ err }, "Failed to scrape detail");
+    res.status(404).json({ status: false, error: message });
+  }
+});
+
+router.get("/servers", async (req, res) => {
+  const slug = String(req.query.slug ?? "").trim();
+  if (!slug) {
+    res.status(400).json({ status: false, error: 'Parameter "slug" diperlukan' });
+    return;
+  }
+  const hit = getCached<unknown>(`servers:${slug}`);
+  if (hit) {
+    res.json(hit.data);
+    if (hit.isStale) revalidate(`servers:${slug}`, async () => {
+      const info = await scrapeServers(slug);
+      return { status: true, result: info };
+    }, 3600);
+    return;
+  }
+  try {
+    const info = await scrapeServers(slug);
+    const response = { status: true, result: info };
+    setCache(`servers:${slug}`, response, 3600);
+    res.json(response);
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    req.log.error({ err }, "Failed to scrape servers");
+    res.status(404).json({ status: false, error: message });
+  }
+});
+
+router.get("/download", async (req, res) => {
+  const slug = String(req.query.slug ?? "").trim();
+  if (!slug) {
+    res.status(400).json({ status: false, error: 'Parameter "slug" diperlukan' });
+    return;
+  }
+  const hit = getCached<unknown>(`download:${slug}`);
+  if (hit) {
+    res.json(hit.data);
+    if (hit.isStale) revalidate(`download:${slug}`, async () => {
+      const info = await scrapeDownload(slug);
+      return { status: true, result: info };
+    }, 3600);
+    return;
+  }
+  try {
+    const info = await scrapeDownload(slug);
+    const response = { status: true, result: info };
+    setCache(`download:${slug}`, response, 3600);
+    res.json(response);
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    req.log.error({ err }, "Failed to scrape download");
     res.status(404).json({ status: false, error: message });
   }
 });

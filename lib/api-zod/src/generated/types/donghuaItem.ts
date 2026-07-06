@@ -6,6 +6,13 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export interface HealthStatus {
+export interface DonghuaItem {
+  title: string;
+  slug: string;
+  url: string;
+  type: string;
   status: string;
+  sub: string;
+  /** @nullable */
+  thumbnail?: string | null;
 }

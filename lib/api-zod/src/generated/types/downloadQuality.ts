@@ -5,7 +5,10 @@
  * DonghuaStream API — streaming website for Chinese animation
  * OpenAPI spec version: 0.1.0
  */
+import type { DownloadLink } from './downloadLink';
 
-export interface HealthStatus {
-  status: string;
+export interface DownloadQuality {
+  quality: string;
+  size: string;
+  links: DownloadLink[];
 }

@@ -24,7 +24,7 @@ router.get("/image-proxy", async (req, res) => {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
       },
     });
-    const ct = upstream.headers["content-type"] ?? "image/jpeg";
+    const ct = String(upstream.headers["content-type"] ?? "image/jpeg");
     res.setHeader("Content-Type", ct);
     res.setHeader("Cache-Control", "public, max-age=86400");
     upstream.data.pipe(res);

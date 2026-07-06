@@ -5,7 +5,6 @@
  * DonghuaStream API — streaming website for Chinese animation
  * OpenAPI spec version: 0.1.0
  */
+import type { ScheduleDay } from './scheduleDay';
 
-export interface HealthStatus {
-  status: string;
-}
+export type ScheduleResponseResult = {[key: string]: ScheduleDay[]};

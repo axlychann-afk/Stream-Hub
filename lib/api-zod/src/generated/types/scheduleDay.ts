@@ -6,6 +6,9 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export interface HealthStatus {
-  status: string;
+export interface ScheduleDay {
+  title: string;
+  slug: string;
+  url: string;
+  is_vip: boolean;
 }

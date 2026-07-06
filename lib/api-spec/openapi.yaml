@@ -141,6 +141,58 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /donghua/servers:
+    get:
+      operationId: getServers
+      tags: [donghua]
+      summary: Get all video servers for an episode
+      description: Returns list of all available video servers (including Vidio) for a specific episode slug
+      parameters:
+        - name: slug
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Servers list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ServersResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /donghua/download:
+    get:
+      operationId: getDownload
+      tags: [donghua]
+      summary: Get download links for an episode
+      description: Returns download links grouped by quality for a specific episode slug
+      parameters:
+        - name: slug
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Download links
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DownloadResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /donghua/stream:
     get:
       operationId: getStream
@@ -335,6 +387,17 @@ components:
         - status
         - result
 
+    VideoServer:
+      type: object
+      properties:
+        name:
+          type: string
+        embed_url:
+          type: string
+      required:
+        - name
+        - embed_url
+
     StreamInfo:
       type: object
       properties:
@@ -348,11 +411,16 @@ components:
           type: string
         watch_url:
           type: string
+        servers:
+          type: array
+          items:
+            $ref: "#/components/schemas/VideoServer"
       required:
         - title
         - source
         - embed_url
         - watch_url
+        - servers
 
     StreamResponse:
       type: object
@@ -361,6 +429,90 @@ components:
           type: boolean
         result:
           $ref: "#/components/schemas/StreamInfo"
+      required:
+        - status
+        - result
+
+    ServersInfo:
+      type: object
+      properties:
+        title:
+          type: string
+        slug:
+          type: string
+        total_servers:
+          type: integer
+        servers:
+          type: array
+          items:
+            $ref: "#/components/schemas/VideoServer"
+      required:
+        - title
+        - slug
+        - total_servers
+        - servers
+
+    ServersResponse:
+      type: object
+      properties:
+        status:
+          type: boolean
+        result:
+          $ref: "#/components/schemas/ServersInfo"
+      required:
+        - status
+        - result
+
+    DownloadLink:
+      type: object
+      properties:
+        label:
+          type: string
+        url:
+          type: string
+      required:
+        - label
+        - url
+
+    DownloadQuality:
+      type: object
+      properties:
+        quality:
+          type: string
+        size:
+          type: string
+        links:
+          type: array
+          items:
+            $ref: "#/components/schemas/DownloadLink"
+      required:
+        - quality
+        - size
+        - links
+
+    DownloadInfo:
+      type: object
+      properties:
+        title:
+          type: string
+        slug:
+          type: string
+        downloads:
+          type: array
+          items:
+            $ref: "#/components/schemas/DownloadQuality"
+      required:
+        - title
+        - slug
+        - downloads
+
+    DownloadResponse:
+      type: object
+      properties:
+        status:
+          type: boolean
+        result:
+          $ref: "#/components/schemas/DownloadInfo"
       required:
         - status
         - result

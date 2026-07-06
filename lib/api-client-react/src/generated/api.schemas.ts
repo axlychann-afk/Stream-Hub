@@ -83,6 +83,40 @@ export interface StreamResponse {
   result: StreamInfo;
 }
 
+export interface ServersInfo {
+  title: string;
+  slug: string;
+  total_servers: number;
+  servers: VideoServer[];
+}
+
+export interface ServersResponse {
+  status: boolean;
+  result: ServersInfo;
+}
+
+export interface DownloadLink {
+  label: string;
+  url: string;
+}
+
+export interface DownloadQuality {
+  quality: string;
+  size: string;
+  links: DownloadLink[];
+}
+
+export interface DownloadInfo {
+  title: string;
+  slug: string;
+  downloads: DownloadQuality[];
+}
+
+export interface DownloadResponse {
+  status: boolean;
+  result: DownloadInfo;
+}
+
 export interface ScheduleDay {
   title: string;
   slug: string;
@@ -122,6 +156,14 @@ q: string;
 };
 
 export type GetDonghuaDetailParams = {
+slug: string;
+};
+
+export type GetServersParams = {
+slug: string;
+};
+
+export type GetDownloadParams = {
 slug: string;
 };
 

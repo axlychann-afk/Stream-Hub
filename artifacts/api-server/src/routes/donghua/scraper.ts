@@ -80,6 +80,30 @@ export interface StreamInfo {
   servers: VideoServer[];
 }
 
+export interface ServersInfo {
+  title: string;
+  slug: string;
+  total_servers: number;
+  servers: VideoServer[];
+}
+
+export interface DownloadLink {
+  label: string;
+  url: string;
+}
+
+export interface DownloadQuality {
+  quality: string;
+  size: string;
+  links: DownloadLink[];
+}
+
+export interface DownloadInfo {
+  title: string;
+  slug: string;
+  downloads: DownloadQuality[];
+}
+
 export interface ScheduleItem {
   title: string;
   slug: string;
@@ -154,6 +178,23 @@ interface AxlyServersResponse {
       label?: unknown;
       embed_url?: unknown;
       is_ads?: unknown;
+    }>;
+  };
+}
+
+interface AxlyDownloadResponse {
+  status: boolean;
+  error?: string;
+  result?: {
+    title?: unknown;
+    slug?: unknown;
+    downloads?: Array<{
+      quality?: unknown;
+      size?: unknown;
+      links?: Array<{
+        label?: unknown;
+        url?: unknown;
+      }>;
     }>;
   };
 }
@@ -319,6 +360,118 @@ export async function scrapeDetail(slug: string): Promise<DonghuaDetail> {
     sinopsis: str(r.sinopsis),
     cover: typeof r.cover === "string" ? r.cover : null,
     episodes,
+  };
+}
+
+/** Regex matching only genuine Vidio embed URLs (domain-anchored). */
+const VIDIO_EMBED_RE = /https?:\/\/(?:www\.)?vidio\.com\/embed\/[^\s"'<>&]+/;
+
+/** Returns true if a URL is a Vidio embed (domain-anchored check). */
+function isVidioUrl(url: string): boolean {
+  return VIDIO_EMBED_RE.test(url);
+}
+
+/**
+ * Extract a Vidio embed URL from the anichin episode page HTML, if present.
+ * Uses a short 5s timeout so it never significantly delays the servers response.
+ */
+async function scrapeVidioFromPage(slug: string): Promise<string | null> {
+  try {
+    const { data } = await httpDirect.get<string>(`/${slug}/`, {
+      responseType: "text",
+      timeout: 5000,
+    });
+    const $ = cheerio.load(data);
+
+    // 1. Look for Vidio iframes embedded directly in the page
+    const iframes = $("iframe").toArray();
+    for (const el of iframes) {
+      const src = $(el).attr("src") ?? "";
+      if (isVidioUrl(src)) return src;
+    }
+
+    // 2. Look for Vidio embed URLs anywhere in the raw HTML
+    const pageHtml = $.html();
+    const match = VIDIO_EMBED_RE.exec(pageHtml);
+    if (match) return match[0];
+
+    // 3. Look in data-src / data-embed / data-url attributes
+    const dataEls = $("[data-src],[data-embed],[data-url]").toArray();
+    for (const el of dataEls) {
+      const val =
+        $(el).attr("data-src") ??
+        $(el).attr("data-embed") ??
+        $(el).attr("data-url") ??
+        "";
+      if (isVidioUrl(val)) return val;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+export async function scrapeServers(slug: string): Promise<ServersInfo> {
+  const { data } = await http.get<AxlyServersResponse>(
+    `/servers?slug=${encodeURIComponent(slug)}`
+  );
+
+  if (!data?.status || !data?.result) {
+    throw new Error(data?.error ?? `Servers not found for slug: ${slug}`);
+  }
+
+  const r = data.result;
+  const servers: VideoServer[] = [];
+
+  for (const s of r.servers ?? []) {
+    const name = typeof s.label === "string" ? s.label.trim() : "";
+    const embed_url = typeof s.embed_url === "string" ? s.embed_url.trim() : "";
+    if (name && embed_url) servers.push({ name, embed_url });
+  }
+
+  // Try to add Vidio from the episode page if not already present
+  const hasVidio = servers.some((s) => s.name.toLowerCase().includes("vidio") || s.embed_url.includes("vidio.com"));
+  if (!hasVidio) {
+    const vidioUrl = await scrapeVidioFromPage(slug);
+    if (vidioUrl) servers.push({ name: "Vidio", embed_url: vidioUrl });
+  }
+
+  return {
+    title: str(r.title),
+    slug: str(r.slug, slug),
+    total_servers: servers.length,
+    servers,
+  };
+}
+
+export async function scrapeDownload(slug: string): Promise<DownloadInfo> {
+  const { data } = await http.get<AxlyDownloadResponse>(
+    `/download?slug=${encodeURIComponent(slug)}`
+  );
+
+  if (!data?.status || !data?.result) {
+    throw new Error(data?.error ?? `Download info not found for slug: ${slug}`);
+  }
+
+  const r = data.result;
+  const downloads: DownloadQuality[] = [];
+
+  for (const q of r.downloads ?? []) {
+    const quality = typeof q.quality === "string" ? q.quality.trim() : "";
+    const size = typeof q.size === "string" ? q.size.trim() : "";
+    const links: DownloadLink[] = [];
+    for (const l of q.links ?? []) {
+      const label = typeof l.label === "string" ? l.label.trim() : "";
+      const url = typeof l.url === "string" ? l.url.trim() : "";
+      if (label && url) links.push({ label, url });
+    }
+    if (quality) downloads.push({ quality, size, links });
+  }
+
+  return {
+    title: str(r.title),
+    slug: str(r.slug, slug),
+    downloads,
   };
 }
 

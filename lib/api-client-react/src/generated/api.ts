@@ -18,15 +18,19 @@ import type {
 import type {
   DetailResponse,
   DonghuaListResponse,
+  DownloadResponse,
   ErrorResponse,
   GetCompletedParams,
   GetDonghuaDetailParams,
+  GetDownloadParams,
   GetDroppedParams,
   GetOngoingParams,
+  GetServersParams,
   GetStreamParams,
   HealthStatus,
   ScheduleResponse,
   SearchDonghuaParams,
+  ServersResponse,
   StreamResponse,
   TrendingResponse
 } from './api.schemas';
@@ -620,6 +624,176 @@ export function useGetDonghuaDetail<TData = Awaited<ReturnType<typeof getDonghua
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetDonghuaDetailQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetServersUrl = (params: GetServersParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/donghua/servers?${stringifiedParams}` : `/api/donghua/servers`
+}
+
+/**
+ * Returns list of all available video servers (including Vidio) for a specific episode slug
+ * @summary Get all video servers for an episode
+ */
+export const getServers = async (params: GetServersParams, options?: RequestInit): Promise<ServersResponse> => {
+
+  return customFetch<ServersResponse>(getGetServersUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetServersQueryKey = (params?: GetServersParams,) => {
+    return [
+    `/api/donghua/servers`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetServersQueryOptions = <TData = Awaited<ReturnType<typeof getServers>>, TError = ErrorType<ErrorResponse>>(params: GetServersParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getServers>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetServersQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getServers>>> = ({ signal }) => getServers(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getServers>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetServersQueryResult = NonNullable<Awaited<ReturnType<typeof getServers>>>
+export type GetServersQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get all video servers for an episode
+ */
+
+export function useGetServers<TData = Awaited<ReturnType<typeof getServers>>, TError = ErrorType<ErrorResponse>>(
+ params: GetServersParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getServers>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetServersQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetDownloadUrl = (params: GetDownloadParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/donghua/download?${stringifiedParams}` : `/api/donghua/download`
+}
+
+/**
+ * Returns download links grouped by quality for a specific episode slug
+ * @summary Get download links for an episode
+ */
+export const getDownload = async (params: GetDownloadParams, options?: RequestInit): Promise<DownloadResponse> => {
+
+  return customFetch<DownloadResponse>(getGetDownloadUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetDownloadQueryKey = (params?: GetDownloadParams,) => {
+    return [
+    `/api/donghua/download`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetDownloadQueryOptions = <TData = Awaited<ReturnType<typeof getDownload>>, TError = ErrorType<ErrorResponse>>(params: GetDownloadParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getDownload>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetDownloadQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getDownload>>> = ({ signal }) => getDownload(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getDownload>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetDownloadQueryResult = NonNullable<Awaited<ReturnType<typeof getDownload>>>
+export type GetDownloadQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get download links for an episode
+ */
+
+export function useGetDownload<TData = Awaited<ReturnType<typeof getDownload>>, TError = ErrorType<ErrorResponse>>(
+ params: GetDownloadParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getDownload>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetDownloadQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 
