@@ -221,6 +221,12 @@ importers:
 
   artifacts/donghua-stream:
     dependencies:
+      axios:
+        specifier: ^1.7.0
+        version: 1.18.1
+      cheerio:
+        specifier: ^1.0.0
+        version: 1.2.0
       react-helmet-async:
         specifier: ^3.0.0
         version: 3.0.0(react@19.1.0)

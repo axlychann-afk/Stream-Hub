@@ -10,6 +10,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "axios": "^1.7.0",
+    "cheerio": "^1.0.0",
     "react-helmet-async": "^3.0.0",
     "use-debounce": "^10.1.1"
   },
