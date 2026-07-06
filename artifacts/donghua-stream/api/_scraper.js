@@ -7,15 +7,19 @@ const HEADERS = {
   'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
   'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
   'Accept-Language': 'id-ID,id;q=0.9,en;q=0.8',
+  'Cache-Control': 'no-cache',
 };
 
 export async function fetchPage(url) {
-  const { data } = await axios.get(url, { headers: HEADERS, timeout: 15000 });
+  const { data } = await axios.get(url, { headers: HEADERS, timeout: 8000 });
   return cheerio.load(data);
 }
 
 export function extractSlug(url) {
-  return url.replace(/^https?:\/\/[^/]+\//, '').replace(/\/$/, '').replace(/^\//, '');
+  return url
+    .replace(/^https?:\/\/[^/]+\//, '')
+    .replace(/\/$/, '')
+    .replace(/^\//, '');
 }
 
 export function parseItems($) {
@@ -29,10 +33,10 @@ export function parseItems($) {
     const sub = $(el).find('.sb').text().trim() || '';
     const thumbnail = $(el).find('img').attr('src') || null;
     if (title && link) {
-      const url = link.startsWith('http') ? link : `${BASE_URL}${link}`;
-      if (!seen.has(url)) {
-        seen.add(url);
-        results.push({ title, slug: extractSlug(link), url, type, status, sub, thumbnail });
+      const fullUrl = link.startsWith('http') ? link : `${BASE_URL}${link}`;
+      if (!seen.has(fullUrl)) {
+        seen.add(fullUrl);
+        results.push({ title, slug: extractSlug(link), url: fullUrl, type, status, sub, thumbnail });
       }
     }
   });
@@ -51,4 +55,5 @@ export function setCors(res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Cache-Control', 's-maxage=120, stale-while-revalidate=60');
 }
