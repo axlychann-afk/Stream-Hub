@@ -151,7 +151,7 @@ export async function scrapeCompleted(
 export async function scrapeDropped(
   page = 1
 ): Promise<{ results: DonghuaItem[]; hasMore: boolean }> {
-  return scrapeList(`${BASE_URL}/category/drop/page/{page}/`, page);
+  return scrapeList(`${BASE_URL}/drop/page/{page}/`, page);
 }
 
 export async function scrapeUpcoming(): Promise<{
@@ -340,7 +340,7 @@ export async function scrapeStream(slug: string): Promise<StreamInfo> {
     });
   }
 
-  // 5. Fallback: anchor links
+  // 5. Fallback: Dailymotion anchor links
   if (!streamUrl) {
     $('a[href*="dailymotion.com"]').each((_, el) => {
       const href = $(el).attr("href");
@@ -348,8 +348,24 @@ export async function scrapeStream(slug: string): Promise<StreamInfo> {
         const match = href.match(/dailymotion\.com\/video\/([a-zA-Z0-9]+)/);
         if (match) {
           videoId = match[1];
-          streamUrl = `https://www.dailymotion.com/embed/video/${videoId}?autoplay=1`;
+          streamUrl = `https://www.dailymotion.com/embed/video/${videoId}?ui=0&autoplay=1`;
           source = "Dailymotion";
+        }
+        return false as unknown as void;
+      }
+    });
+  }
+
+  // 6. Fallback: OK.ru anchor links
+  if (!streamUrl) {
+    $('a[href*="ok.ru"]').each((_, el) => {
+      const href = $(el).attr("href");
+      if (href) {
+        const match = href.match(/ok\.ru\/video\/(\d+)/);
+        if (match) {
+          videoId = match[1];
+          streamUrl = `https://ok.ru/videoembed/${videoId}`;
+          source = "OK.ru";
         }
         return false as unknown as void;
       }
