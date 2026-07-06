@@ -366,6 +366,12 @@ async function scrapeDetailFromAnichin(slug: string): Promise<DonghuaDetail> {
   // anichin.moe lists episodes newest-first; reverse so ep 1 is at index 0
   episodes.reverse();
 
+  // If we get 0 episodes the page is likely wrong (e.g. a tutorial or unrelated article).
+  // Throw so the caller can fall back to a search-based slug redirect on the frontend.
+  if (episodes.length === 0) {
+    throw new Error(`Detail not found for slug: ${slug} (no episodes on anichin page)`);
+  }
+
   return {
     title,
     alternative,
