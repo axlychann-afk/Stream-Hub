@@ -1,14 +1,36 @@
-import { useGetDonghuaDetail, getGetDonghuaDetailQueryKey } from "@workspace/api-client-react";
-import { useParams, Link } from "wouter";
+import { useGetDonghuaDetail, useSearchDonghua, getGetDonghuaDetailQueryKey } from "@workspace/api-client-react";
+import { useParams, Link, useLocation } from "wouter";
 import { Helmet } from "react-helmet-async";
 import { PlayCircle, Star, Info, ListVideo } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useEffect } from "react";
 
 export default function Detail() {
   const params = useParams<{ slug: string }>();
   const slug = params.slug || "";
+  const [, navigate] = useLocation();
   
-  const { data, isLoading, error } = useGetDonghuaDetail({ slug }, { query: { enabled: !!slug, queryKey: getGetDonghuaDetailQueryKey({ slug }) } });
+  const { data, isLoading, error } = useGetDonghuaDetail(
+    { slug },
+    { query: { enabled: !!slug, queryKey: getGetDonghuaDetailQueryKey({ slug }), retry: false } }
+  );
+
+  // When slug not found, search using the slug words to find the correct slug
+  const notFound = !isLoading && (!!error || (data != null && !data.result?.title));
+  const searchQuery = slug.replace(/-/g, " ");
+  const { data: searchData } = useSearchDonghua(
+    { q: searchQuery },
+    { query: { enabled: notFound && !!searchQuery, retry: false } }
+  );
+
+  // Auto-redirect if search found a close match with a different slug
+  useEffect(() => {
+    if (!notFound || !searchData?.results?.length) return;
+    const match = searchData.results[0];
+    if (match.slug && match.slug !== slug) {
+      navigate(`/donghua/${match.slug}`, { replace: true });
+    }
+  }, [notFound, searchData, slug, navigate]);
 
   if (isLoading) {
     return (

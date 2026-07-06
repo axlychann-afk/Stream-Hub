@@ -320,6 +320,12 @@ export async function scrapeDetail(slug: string): Promise<DonghuaDetail> {
 
   const r = data.result;
 
+  // Axly returns status:true with all-empty fields when the slug doesn't exist.
+  // Treat this as a not-found error so the API returns 404 instead of empty data.
+  if (!r.title) {
+    throw new Error(`Detail not found for slug: ${slug}`);
+  }
+
   const rawEpisodes = Array.isArray(r.episodes) ? r.episodes : [];
   const episodes: Episode[] = rawEpisodes.map((raw, idx) => {
     const ep = (typeof raw === "object" && raw !== null ? raw : {}) as AxlyEpisode;
