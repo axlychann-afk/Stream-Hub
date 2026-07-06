@@ -1,13 +1,13 @@
 import {
   useGetStream,
   useGetDonghuaDetail,
-  useGetServers,
   useGetDownload,
   getGetStreamQueryKey,
   getGetDonghuaDetailQueryKey,
-  getGetServersQueryKey,
   getGetDownloadQueryKey,
 } from "@workspace/api-client-react";
+// Note: useGetServers removed — using direct fetch below to avoid VideoServer type mismatch
+import { useQuery } from "@tanstack/react-query";
 import { useParams, Link } from "wouter";
 import { Helmet } from "react-helmet-async";
 import {
@@ -23,6 +23,37 @@ import {
 import { cn } from "@/lib/utils";
 import { useEffect, useRef, useState } from "react";
 
+// Axly server shape returned by /donghua/servers
+type AxlyServer = {
+  label?: string;
+  name?: string;
+  embed_url?: string;
+  decoded_html?: string;
+  is_ads?: boolean;
+};
+
+// Build the servers API URL: use VITE_API_BASE_URL if set (Vercel → Axly direct),
+// otherwise use the local proxy path.
+const _apiBase = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/+$/, "");
+function serversApiUrl(slug: string) {
+  if (_apiBase) return `${_apiBase}/donghua/servers?slug=${encodeURIComponent(slug)}`;
+  return `/api/donghua/servers?slug=${encodeURIComponent(slug)}`;
+}
+
+// Extract embed URL: prefer embed_url, fallback to parsing src from decoded_html
+function extractEmbedUrl(server: AxlyServer): string {
+  if (server.embed_url) return server.embed_url;
+  if (server.decoded_html) {
+    const m = server.decoded_html.match(/src=["']([^"']+)["']/i);
+    if (m) return m[1];
+  }
+  return "";
+}
+
+function getServerLabel(s: AxlyServer) {
+  return s.label || s.name || "Server";
+}
+
 export default function Watch() {
   const params = useParams<{ seriesSlug: string; episodeSlug: string }>();
   const { seriesSlug = "", episodeSlug = "" } = params;
@@ -37,10 +68,17 @@ export default function Watch() {
     { query: { enabled: !!seriesSlug, queryKey: getGetDonghuaDetailQueryKey({ slug: seriesSlug }) } }
   );
 
-  const { data: serversData, isLoading: serversLoading } = useGetServers(
-    { slug: episodeSlug },
-    { query: { enabled: !!episodeSlug, queryKey: getGetServersQueryKey({ slug: episodeSlug }) } }
-  );
+  // Direct fetch — bypasses generated client to avoid VideoServer type mismatch with Axly
+  const { data: serversData, isLoading: serversLoading } = useQuery<{ result?: { servers?: AxlyServer[] } }>({
+    queryKey: ["axly-servers", episodeSlug],
+    queryFn: async () => {
+      const res = await fetch(serversApiUrl(episodeSlug));
+      if (!res.ok) throw new Error(`Servers fetch failed: ${res.status}`);
+      return res.json();
+    },
+    enabled: !!episodeSlug,
+    staleTime: 1000 * 60 * 5,
+  });
 
   const { data: downloadData } = useGetDownload(
     { slug: episodeSlug },
@@ -77,15 +115,9 @@ export default function Watch() {
   const currentEpInfo = currentIndex !== -1 ? episodes[currentIndex] : null;
   const stream = streamData?.result;
 
-  // Axly API uses "label" field; our Express API transforms it to "name".
-  // Handle both so this works whether the frontend calls our Express API or Axly directly.
-  type AnyServer = { name?: string; label?: string; embed_url: string };
-  const getServerName = (s: AnyServer) => s.name || s.label || "Server";
-
-  // Use dedicated /servers endpoint (includes Vidio), fall back to stream servers
-  const rawServers = (serversData?.result?.servers ?? stream?.servers ?? []) as AnyServer[];
-  const servers = rawServers;
-  const activeEmbedUrl = servers[selectedServer]?.embed_url || stream?.embed_url || "";
+  // Build the server list from the direct Axly fetch result
+  const servers: AxlyServer[] = serversData?.result?.servers ?? [];
+  const activeEmbedUrl = (servers[selectedServer] ? extractEmbedUrl(servers[selectedServer]) : "") || stream?.embed_url || "";
 
   const downloads = downloadData?.result?.downloads ?? [];
 
@@ -160,7 +192,7 @@ export default function Watch() {
                           : "bg-secondary hover:bg-secondary/70 text-foreground"
                       )}
                     >
-                      {getServerName(server)}
+                      {getServerLabel(server)}
                     </button>
                   ))
                 )}
