@@ -104,6 +104,7 @@ export default function Watch() {
 
           {/* Player Column */}
           <div className="flex-1 w-full min-w-0 relative group">
+            {/* Video Player */}
             <div className="aspect-video w-full bg-zinc-950 relative flex items-center justify-center overflow-hidden lg:rounded-b-none lg:rounded-tl-lg">
               {streamLoading ? (
                 <div className="flex flex-col items-center text-muted-foreground animate-pulse">
@@ -128,61 +129,13 @@ export default function Watch() {
                   key={activeEmbedUrl}
                   src={activeEmbedUrl}
                   className="w-full h-full border-0 absolute inset-0"
-                  allowFullScreen
-                  sandbox="allow-scripts allow-same-origin allow-presentation"
+                  allow="autoplay; fullscreen; picture-in-picture"
+                  sandbox="allow-scripts allow-same-origin allow-presentation allow-forms allow-popups"
                 />
               )}
             </div>
 
-            {/* Player Controls Bar */}
-            <div className="bg-card/90 border-t border-border p-3 flex flex-row items-center justify-between gap-3 min-w-0">
-              <div className="flex-1 min-w-0 overflow-hidden">
-                <h1
-                  className="text-base md:text-lg font-bold text-white truncate leading-tight"
-                  title={stream?.title || currentEpInfo?.title}
-                >
-                  {stream?.title || currentEpInfo?.title || "Loading Episode..."}
-                </h1>
-                <div className="flex items-center gap-2 mt-0.5 min-w-0 overflow-hidden">
-                  <Link
-                    href={`/donghua/${seriesSlug}`}
-                    className="text-xs text-muted-foreground hover:text-primary transition-colors truncate min-w-0"
-                  >
-                    {series?.title || "Loading Series..."}
-                  </Link>
-                  {stream?.source && (
-                    <span className="px-1.5 py-0.5 rounded text-[10px] uppercase font-bold bg-primary/20 text-primary border border-primary/20 shrink-0">
-                      {stream.source}
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              <div className="flex items-center gap-1.5 shrink-0">
-                <Link
-                  href={prevEpisode ? `/watch/${seriesSlug}/${getEpisodeSlug(prevEpisode.url)}` : "#"}
-                  className={cn(
-                    "flex items-center justify-center p-2 rounded-lg bg-secondary hover:bg-secondary/80 transition-colors",
-                    !prevEpisode && "opacity-50 cursor-not-allowed pointer-events-none"
-                  )}
-                  title="Previous Episode"
-                >
-                  <ChevronLeft className="w-5 h-5" />
-                </Link>
-                <Link
-                  href={nextEpisode ? `/watch/${seriesSlug}/${getEpisodeSlug(nextEpisode.url)}` : "#"}
-                  className={cn(
-                    "flex items-center justify-center p-2 rounded-lg bg-secondary hover:bg-secondary/80 transition-colors text-primary",
-                    !nextEpisode && "opacity-50 cursor-not-allowed pointer-events-none text-foreground"
-                  )}
-                  title="Next Episode"
-                >
-                  <ChevronRight className="w-5 h-5" />
-                </Link>
-              </div>
-            </div>
-
-            {/* Server Selector */}
+            {/* Server Selector — right below the video */}
             {!streamLoading && servers.length > 0 && (
               <div className="bg-muted/20 border-t border-border px-3 py-2.5 flex flex-wrap gap-1.5 items-center">
                 <div className="flex items-center gap-1.5 text-xs text-muted-foreground font-medium shrink-0 mr-1">
@@ -206,59 +159,110 @@ export default function Watch() {
               </div>
             )}
 
-            {/* Download Section */}
-            {downloads.length > 0 && (
-              <div className="border-t border-border bg-card/50 px-3 py-3">
-                <div className="flex items-center gap-1.5 text-xs text-muted-foreground font-medium mb-2.5">
-                  <Download className="w-3.5 h-3.5" />
-                  <span>Download Episode:</span>
+            {/* Player Controls Bar */}
+            <div className="bg-card/90 border-t border-border p-3 flex flex-col gap-2.5 min-w-0">
+              {/* Top row: title + prev/next nav */}
+              <div className="flex flex-row items-center justify-between gap-3 min-w-0">
+                <div className="flex-1 min-w-0 overflow-hidden">
+                  <h1
+                    className="text-base md:text-lg font-bold text-white truncate leading-tight"
+                    title={stream?.title || currentEpInfo?.title}
+                  >
+                    {stream?.title || currentEpInfo?.title || "Loading Episode..."}
+                  </h1>
+                  <div className="flex items-center gap-2 mt-0.5 min-w-0 overflow-hidden">
+                    <Link
+                      href={`/donghua/${seriesSlug}`}
+                      className="text-xs text-muted-foreground hover:text-primary transition-colors truncate min-w-0"
+                    >
+                      {series?.title || "Loading Series..."}
+                    </Link>
+                    {stream?.source && (
+                      <span className="px-1.5 py-0.5 rounded text-[10px] uppercase font-bold bg-primary/20 text-primary border border-primary/20 shrink-0">
+                        {stream.source}
+                      </span>
+                    )}
+                  </div>
                 </div>
-                <div className="flex flex-wrap gap-2">
-                  {downloads.map((q) => (
-                    <div key={q.quality} className="relative">
-                      <button
-                        onClick={() => setOpenQuality(openQuality === q.quality ? null : q.quality)}
-                        className={cn(
-                          "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold border transition-all",
-                          openQuality === q.quality
-                            ? "bg-primary text-primary-foreground border-primary"
-                            : "bg-secondary hover:bg-secondary/70 text-foreground border-border"
-                        )}
-                      >
-                        {q.quality}
-                        {q.size && (
-                          <span className={cn(
-                            "text-[10px] font-normal",
-                            openQuality === q.quality ? "text-primary-foreground/70" : "text-muted-foreground"
-                          )}>
-                            {q.size}
-                          </span>
-                        )}
-                      </button>
 
-                      {/* Dropdown links */}
-                      {openQuality === q.quality && q.links.length > 0 && (
-                        <div className="absolute top-full left-0 mt-1 z-20 bg-popover border border-border rounded-lg shadow-lg min-w-[160px] overflow-hidden">
-                          {q.links.map((link, i) => (
-                            <a
-                              key={i}
-                              href={link.url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="flex items-center justify-between gap-2 px-3 py-2 text-xs hover:bg-secondary transition-colors text-foreground"
-                              onClick={() => setOpenQuality(null)}
-                            >
-                              <span>{link.label}</span>
-                              <ExternalLink className="w-3 h-3 text-muted-foreground shrink-0" />
-                            </a>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  ))}
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <Link
+                    href={prevEpisode ? `/watch/${seriesSlug}/${getEpisodeSlug(prevEpisode.url)}` : "#"}
+                    className={cn(
+                      "flex items-center justify-center p-2 rounded-lg bg-secondary hover:bg-secondary/80 transition-colors",
+                      !prevEpisode && "opacity-50 cursor-not-allowed pointer-events-none"
+                    )}
+                    title="Previous Episode"
+                  >
+                    <ChevronLeft className="w-5 h-5" />
+                  </Link>
+                  <Link
+                    href={nextEpisode ? `/watch/${seriesSlug}/${getEpisodeSlug(nextEpisode.url)}` : "#"}
+                    className={cn(
+                      "flex items-center justify-center p-2 rounded-lg bg-secondary hover:bg-secondary/80 transition-colors text-primary",
+                      !nextEpisode && "opacity-50 cursor-not-allowed pointer-events-none text-foreground"
+                    )}
+                    title="Next Episode"
+                  >
+                    <ChevronRight className="w-5 h-5" />
+                  </Link>
                 </div>
               </div>
-            )}
+
+              {/* Download Section — below the title */}
+              {downloads.length > 0 && (
+                <div className="border-t border-border/50 pt-2.5">
+                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground font-medium mb-2">
+                    <Download className="w-3.5 h-3.5" />
+                    <span>Download Episode:</span>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {downloads.map((q) => (
+                      <div key={q.quality} className="relative">
+                        <button
+                          onClick={() => setOpenQuality(openQuality === q.quality ? null : q.quality)}
+                          className={cn(
+                            "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold border transition-all",
+                            openQuality === q.quality
+                              ? "bg-primary text-primary-foreground border-primary"
+                              : "bg-secondary hover:bg-secondary/70 text-foreground border-border"
+                          )}
+                        >
+                          {q.quality}
+                          {q.size && (
+                            <span className={cn(
+                              "text-[10px] font-normal",
+                              openQuality === q.quality ? "text-primary-foreground/70" : "text-muted-foreground"
+                            )}>
+                              {q.size}
+                            </span>
+                          )}
+                        </button>
+
+                        {/* Dropdown links */}
+                        {openQuality === q.quality && q.links.length > 0 && (
+                          <div className="absolute top-full left-0 mt-1 z-20 bg-popover border border-border rounded-lg shadow-lg min-w-[160px] overflow-hidden">
+                            {q.links.map((link, i) => (
+                              <a
+                                key={i}
+                                href={link.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="flex items-center justify-between gap-2 px-3 py-2 text-xs hover:bg-secondary transition-colors text-foreground"
+                                onClick={() => setOpenQuality(null)}
+                              >
+                                <span>{link.label}</span>
+                                <ExternalLink className="w-3 h-3 text-muted-foreground shrink-0" />
+                              </a>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Sidebar Playlist */}

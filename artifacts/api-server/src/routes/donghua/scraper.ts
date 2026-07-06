@@ -309,22 +309,97 @@ export async function scrapeSearch(
   return { results };
 }
 
+/**
+ * Fallback: scrape series detail directly from anichin.moe when Axly has no data.
+ * Uses the AnimeStream WordPress theme HTML structure.
+ */
+async function scrapeDetailFromAnichin(slug: string): Promise<DonghuaDetail> {
+  const { data } = await httpDirect.get<string>(`/${slug}/`, {
+    responseType: "text",
+    timeout: 15000,
+  });
+  const $ = cheerio.load(data);
+
+  const title = $(".entry-title, h1.seriestitle").first().text().trim();
+  if (!title) throw new Error(`Detail not found for slug: ${slug}`);
+
+  const alternative = $(".alter").first().text().trim();
+  const sinopsis = $(".bixbox.synp .desc, .entry-content .synopse, .synopse").first().text().trim();
+  const cover =
+    $(".bigcover img, .thumb img, .cover img").first().attr("src") ||
+    $(".bigcover img, .thumb img, .cover img").first().attr("data-src") ||
+    null;
+
+  // Parse metadata from .spe spans or .info-content rows
+  const getMeta = (label: string) => {
+    let val = "";
+    $(".spe span, .info-content .info-meta").each((_, el) => {
+      const text = $(el).text();
+      if (text.toLowerCase().includes(label.toLowerCase())) {
+        val = $(el).find("a, span").last().text().trim() || text.replace(/[^:]+:/, "").trim();
+      }
+    });
+    return val;
+  };
+
+  const genres: string[] = [];
+  $(".genres-content a, .genre-list a, .spe a[href*='genre']").each((_, el) => {
+    const g = $(el).text().trim();
+    if (g) genres.push(g);
+  });
+
+  // Parse episodes from .eplister
+  const episodes: Episode[] = [];
+  $(".eplister ul li").each((idx, el) => {
+    const linkEl = $(el).find("a");
+    const href = linkEl.attr("href") ?? "";
+    if (!href) return;
+    const fullUrl = href.startsWith("http") ? href : `${ANICHIN_BASE}${href}`;
+    const numText = $(el).find(".epl-num").text().trim();
+    const num = parseFloat(numText) || idx + 1;
+    const title = $(el).find(".epl-title").text().trim();
+    const date = $(el).find(".epl-date").text().trim() || null;
+    const epSlug = slugFromUrl(fullUrl);
+    episodes.push({ number: num, title, url: fullUrl, slug: epSlug, date });
+  });
+
+  // anichin.moe lists episodes newest-first; reverse so ep 1 is at index 0
+  episodes.reverse();
+
+  return {
+    title,
+    alternative,
+    rating: getMeta("rating") || getMeta("skor"),
+    status: getMeta("status"),
+    type: getMeta("type") || getMeta("tipe"),
+    studio: getMeta("studio"),
+    network: getMeta("network") || getMeta("jaringan"),
+    releaseDate: getMeta("aired") || getMeta("tayang"),
+    duration: getMeta("duration") || getMeta("durasi"),
+    season: getMeta("season"),
+    country: getMeta("country") || getMeta("negara"),
+    totalEpisodes: episodes.length || getMeta("episodes") || getMeta("episode"),
+    subber: getMeta("subber"),
+    genres,
+    sinopsis,
+    cover: cover && !cover.startsWith("data:") ? cover : null,
+    episodes,
+  };
+}
+
 export async function scrapeDetail(slug: string): Promise<DonghuaDetail> {
   const { data } = await http.get<AxlyDetailResponse>(
     `/detail?slug=${encodeURIComponent(slug)}`
   );
 
-  if (!data?.result) {
-    throw new Error(data?.error ?? `Detail not found for slug: ${slug}`);
+  // Axly returns status:true with all-empty fields when the slug doesn't exist,
+  // or may return status:false / missing result for unlisted series.
+  // In both cases fall back to scraping anichin.moe directly.
+  if (!data?.result || !data.result.title) {
+    return scrapeDetailFromAnichin(slug);
   }
 
   const r = data.result;
-
-  // Axly returns status:true with all-empty fields when the slug doesn't exist.
-  // Treat this as a not-found error so the API returns 404 instead of empty data.
-  if (!r.title) {
-    throw new Error(`Detail not found for slug: ${slug}`);
-  }
 
   const rawEpisodes = Array.isArray(r.episodes) ? r.episodes : [];
   const episodes: Episode[] = rawEpisodes.map((raw, idx) => {
