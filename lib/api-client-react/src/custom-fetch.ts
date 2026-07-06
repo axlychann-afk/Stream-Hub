@@ -66,7 +66,10 @@ function applyBaseUrl(input: RequestInfo | URL): RequestInfo | URL {
   // Only prepend to relative paths (starting with /)
   if (!url.startsWith("/")) return input;
 
-  const absolute = `${_baseUrl}${url}`;
+  // External base URLs (e.g. https://axlyapi.qzz.io) don't use the /api
+  // internal prefix — strip it so /api/donghua/x becomes /donghua/x.
+  const path = _baseUrl.startsWith("http") ? url.replace(/^\/api(?=\/)/, "") : url;
+  const absolute = `${_baseUrl}${path}`;
   if (typeof input === "string") return absolute;
   if (isUrl(input)) return new URL(absolute);
   return new Request(absolute, input as Request);
