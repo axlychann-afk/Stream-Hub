@@ -4,6 +4,13 @@
   "outputDirectory": "artifacts/donghua-stream/dist",
   "framework": null,
   "rewrites": [
-    { "source": "/(.*)", "destination": "/index.html" }
+    {
+      "source": "/api/donghua/:path*",
+      "destination": "https://axlyapi.qzz.io/donghua/:path*"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
   ]
 }

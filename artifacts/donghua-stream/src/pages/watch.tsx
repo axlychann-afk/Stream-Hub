@@ -77,8 +77,14 @@ export default function Watch() {
   const currentEpInfo = currentIndex !== -1 ? episodes[currentIndex] : null;
   const stream = streamData?.result;
 
+  // Axly API uses "label" field; our Express API transforms it to "name".
+  // Handle both so this works whether the frontend calls our Express API or Axly directly.
+  type AnyServer = { name?: string; label?: string; embed_url: string };
+  const getServerName = (s: AnyServer) => s.name || s.label || "Server";
+
   // Use dedicated /servers endpoint (includes Vidio), fall back to stream servers
-  const servers = serversData?.result?.servers ?? stream?.servers ?? [];
+  const rawServers = (serversData?.result?.servers ?? stream?.servers ?? []) as AnyServer[];
+  const servers = rawServers;
   const activeEmbedUrl = servers[selectedServer]?.embed_url || stream?.embed_url || "";
 
   const downloads = downloadData?.result?.downloads ?? [];
@@ -194,7 +200,7 @@ export default function Watch() {
                         : "bg-secondary hover:bg-secondary/70 text-foreground"
                     )}
                   >
-                    {server.name}
+                    {getServerName(server)}
                   </button>
                 ))}
               </div>
