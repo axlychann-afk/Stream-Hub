@@ -4,8 +4,7 @@ services:
     name: donghua-api
     runtime: node
     region: oregon
-    # corepack is built into Node 16+; no sudo / global npm install needed
-    buildCommand: corepack enable pnpm && pnpm install --frozen-lockfile && pnpm --filter @workspace/api-server run build
+    buildCommand: npx --yes pnpm@10 install --frozen-lockfile && npx pnpm@10 --filter @workspace/api-server run build
     startCommand: node --enable-source-maps artifacts/api-server/dist/index.mjs
     healthCheckPath: /api/healthz
     envVars:
@@ -18,11 +17,9 @@ services:
   - type: web
     name: donghua-frontend
     runtime: static
-    buildCommand: corepack enable pnpm && pnpm install --frozen-lockfile && pnpm --filter @workspace/donghua-stream run build
+    buildCommand: npx --yes pnpm@10 install --frozen-lockfile && npx pnpm@10 --filter @workspace/donghua-stream run build
     staticPublishPath: ./artifacts/donghua-stream/dist
     envVars:
-      - key: PORT
-        value: 18837
       - key: BASE_PATH
         value: /
       # Set this to your Render API URL after the API service is deployed,
