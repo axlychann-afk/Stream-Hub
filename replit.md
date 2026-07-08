@@ -67,3 +67,8 @@ All routes are prefixed `/api/donghua/`:
 ## User preferences
 
 _Populate as you build — explicit user instructions worth remembering across sessions._
+
+## Setup notes
+
+- Imported project required `pnpm install` (node_modules were missing, causing both workflows to fail: `ERR_MODULE_NOT_FOUND: esbuild` on the API server, `vite: not found` on the frontend). After installing and restarting both workflows, everything — including the video player's server selector and download links — works correctly against live upstream data.
+- `DATABASE_URL` is only consumed by `lib/db`; the current donghua routes don't touch the DB, so the API server starts and serves fine without it in dev.
