@@ -69,7 +69,12 @@ export default function Watch() {
   );
 
   // Direct fetch — bypasses generated client to avoid VideoServer type mismatch with Axly
-  const { data: serversData, isLoading: serversLoading } = useQuery<{ result?: { servers?: AxlyServer[] } }>({
+  const {
+    data: serversData,
+    isLoading: serversLoading,
+    isError: serversError,
+    refetch: refetchServers,
+  } = useQuery<{ result?: { servers?: AxlyServer[] } }>({
     queryKey: ["axly-servers", episodeSlug],
     queryFn: async () => {
       const res = await fetch(serversApiUrl(episodeSlug));
@@ -78,9 +83,15 @@ export default function Watch() {
     },
     enabled: !!episodeSlug,
     staleTime: 1000 * 60 * 5,
+    retry: 2,
   });
 
-  const { data: downloadData } = useGetDownload(
+  const {
+    data: downloadData,
+    isLoading: downloadLoading,
+    isError: downloadError,
+    refetch: refetchDownload,
+  } = useGetDownload(
     { slug: episodeSlug },
     { query: { enabled: !!episodeSlug, queryKey: getGetDownloadQueryKey({ slug: episodeSlug }) } }
   );
@@ -138,18 +149,18 @@ export default function Watch() {
           <div className="flex-1 w-full min-w-0 relative group">
             {/* Video Player */}
             <div className="aspect-video w-full bg-zinc-950 relative flex items-center justify-center overflow-hidden lg:rounded-b-none lg:rounded-tl-lg">
-              {streamLoading ? (
+              {streamLoading && !activeEmbedUrl ? (
                 <div className="flex flex-col items-center text-muted-foreground animate-pulse">
                   <div className="w-12 h-12 rounded-full border-4 border-primary border-t-transparent animate-spin mb-4" />
                   <p>Loading stream...</p>
                 </div>
-              ) : streamError || !activeEmbedUrl ? (
+              ) : !activeEmbedUrl ? (
                 <div className="flex flex-col items-center text-center p-6 text-muted-foreground max-w-md">
                   <AlertTriangle className="w-12 h-12 text-destructive mb-4" />
                   <h3 className="text-xl font-bold text-white mb-2">Stream Unavailable</h3>
                   <p className="mb-6">The video source could not be loaded or is no longer available.</p>
                   <button
-                    onClick={() => refetch()}
+                    onClick={() => { refetch(); refetchServers(); }}
                     className="flex items-center gap-2 bg-secondary hover:bg-secondary/80 text-foreground px-6 py-2.5 rounded-full transition-colors font-medium"
                   >
                     <RefreshCw className="w-4 h-4" /> Retry Connection
@@ -168,36 +179,46 @@ export default function Watch() {
             </div>
 
             {/* Server Selector — right below the video */}
-            {!streamLoading && (serversLoading || servers.length > 0) && (
-              <div className="bg-muted/20 border-t border-border px-3 py-2.5 flex flex-wrap gap-1.5 items-center">
-                <div className="flex items-center gap-1.5 text-xs text-muted-foreground font-medium shrink-0 mr-1">
-                  <Server className="w-3.5 h-3.5" />
-                  <span>Pilihan Server:</span>
-                </div>
-                {serversLoading ? (
-                  <div className="flex items-center gap-1.5">
-                    {[1, 2, 3].map((i) => (
-                      <div key={i} className="h-6 w-16 rounded-md bg-secondary animate-pulse" />
-                    ))}
-                  </div>
-                ) : (
-                  servers.map((server, idx) => (
-                    <button
-                      key={idx}
-                      onClick={() => setSelectedServer(idx)}
-                      className={cn(
-                        "px-2.5 py-1 rounded-md text-xs font-medium transition-all shrink-0",
-                        selectedServer === idx
-                          ? "bg-primary text-primary-foreground shadow-sm"
-                          : "bg-secondary hover:bg-secondary/70 text-foreground"
-                      )}
-                    >
-                      {getServerLabel(server)}
-                    </button>
-                  ))
-                )}
+            <div className="bg-muted/20 border-t border-border px-3 py-2.5 flex flex-wrap gap-1.5 items-center">
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground font-medium shrink-0 mr-1">
+                <Server className="w-3.5 h-3.5" />
+                <span>Pilihan Server:</span>
               </div>
-            )}
+              {serversLoading ? (
+                <div className="flex items-center gap-1.5">
+                  {[1, 2, 3].map((i) => (
+                    <div key={i} className="h-6 w-16 rounded-md bg-secondary animate-pulse" />
+                  ))}
+                </div>
+              ) : serversError ? (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-destructive">Gagal memuat server.</span>
+                  <button
+                    onClick={() => refetchServers()}
+                    className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    <RefreshCw className="w-3 h-3" /> Coba lagi
+                  </button>
+                </div>
+              ) : servers.length === 0 ? (
+                <span className="text-xs text-muted-foreground">Tidak ada server tersedia.</span>
+              ) : (
+                servers.map((server, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => setSelectedServer(idx)}
+                    className={cn(
+                      "px-2.5 py-1 rounded-md text-xs font-medium transition-all shrink-0",
+                      selectedServer === idx
+                        ? "bg-primary text-primary-foreground shadow-sm"
+                        : "bg-secondary hover:bg-secondary/70 text-foreground"
+                    )}
+                  >
+                    {getServerLabel(server)}
+                  </button>
+                ))
+              )}
+            </div>
 
             {/* Player Controls Bar */}
             <div className="bg-card/90 border-t border-border p-3 flex flex-col gap-2.5 min-w-0">
@@ -250,12 +271,30 @@ export default function Watch() {
               </div>
 
               {/* Download Section — below the title */}
-              {downloads.length > 0 && (
-                <div className="border-t border-border/50 pt-2.5">
-                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground font-medium mb-2">
-                    <Download className="w-3.5 h-3.5" />
-                    <span>Download Episode:</span>
+              <div className="border-t border-border/50 pt-2.5">
+                <div className="flex items-center gap-1.5 text-xs text-muted-foreground font-medium mb-2">
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Download Episode:</span>
+                </div>
+                {downloadLoading ? (
+                  <div className="flex items-center gap-1.5">
+                    {[1, 2, 3].map((i) => (
+                      <div key={i} className="h-7 w-16 rounded-md bg-secondary animate-pulse" />
+                    ))}
                   </div>
+                ) : downloadError ? (
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-destructive">Gagal memuat link download.</span>
+                    <button
+                      onClick={() => refetchDownload()}
+                      className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      <RefreshCw className="w-3 h-3" /> Coba lagi
+                    </button>
+                  </div>
+                ) : downloads.length === 0 ? (
+                  <span className="text-xs text-muted-foreground">Tidak ada link download tersedia.</span>
+                ) : (
                   <div className="flex flex-wrap gap-2">
                     {downloads.map((q) => (
                       <div key={q.quality} className="relative">
@@ -300,8 +339,8 @@ export default function Watch() {
                       </div>
                     ))}
                   </div>
-                </div>
-              )}
+                )}
+              </div>
             </div>
           </div>
 
