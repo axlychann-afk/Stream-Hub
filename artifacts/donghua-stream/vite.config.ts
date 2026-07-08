@@ -54,6 +54,14 @@ export default defineConfig({
     outDir: path.resolve(import.meta.dirname, 'dist'),
     emptyOutDir: true,
     sourcemap: false,
+    rollupOptions: {
+      output: {
+        // Use generic names — avoid exposing the bundler or framework
+        entryFileNames: 'assets/app.[hash].js',
+        chunkFileNames: 'assets/[hash].js',
+        assetFileNames: 'assets/[hash].[ext]',
+      },
+    },
   },
   server: {
     port,
