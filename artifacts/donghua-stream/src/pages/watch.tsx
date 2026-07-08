@@ -149,7 +149,9 @@ export default function Watch() {
   const servers: AxlyServer[] = serversData?.result?.servers ?? [];
   const activeEmbedUrl = (servers[selectedServer] ? extractEmbedUrl(servers[selectedServer]) : "") || stream?.embed_url || "";
 
-  const downloads = downloadData?.result?.downloads ?? [];
+  const downloads = (downloadData?.result?.downloads ?? []).filter(
+    (q) => q.quality?.toUpperCase() !== "VIP"
+  );
 
   return (
     <div className="min-h-screen bg-background pt-16 pb-12 flex flex-col">
