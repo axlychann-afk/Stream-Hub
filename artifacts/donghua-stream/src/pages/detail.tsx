@@ -1,9 +1,46 @@
 import { useGetDonghuaDetail, useSearchDonghua, getGetDonghuaDetailQueryKey } from "@workspace/api-client-react";
 import { useParams, Link, useLocation } from "wouter";
 import { Helmet } from "react-helmet-async";
-import { PlayCircle, Star, Info, ListVideo } from "lucide-react";
+import { PlayCircle, Star, ListVideo, ChevronDown, ChevronUp } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+
+// Patterns that confirm a text is SEO spam
+const SEO_SPAM_SIGNALS = [
+  /download\s+gratis/i,
+  /\bMP4\b|\bMKV\b/i,
+  /hardsub|softsub/i,
+  /kuota\s+internet/i,
+  /subtitle\s+bahasa\s+indonesia/i,
+  /\d{3,4}[Pp]\s+\d{3,4}[Pp]/,
+];
+
+// Patterns that indicate spam has started — text before these is potentially real
+const SPAM_START_SIGNALS = [
+  /tonton\s+streaming/i,
+  /nonton\s+streaming/i,
+  /kamu\s+juga\s+bisa\s+download/i,
+  /jangan\s+lupa\s+ya/i,
+  /anichin/i,
+  /download\s+gratis/i,
+];
+
+function cleanSynopsis(raw: string): { text: string } {
+  const isSpam = SEO_SPAM_SIGNALS.some(p => p.test(raw));
+  if (!isSpam) return { text: raw };
+
+  // Find the earliest spam signal index
+  const spamIdx = SPAM_START_SIGNALS.reduce<number>((min, p) => {
+    const i = raw.search(p);
+    return i >= 0 && i < min ? i : min;
+  }, Infinity);
+
+  // If spam starts within the first 120 chars, the whole thing is a spam description
+  if (spamIdx < 120) return { text: "" };
+
+  // Otherwise there's real content before the spam
+  return { text: raw.slice(0, spamIdx).trim() };
+}
 
 export default function Detail() {
   const params = useParams<{ slug: string }>();
@@ -197,14 +234,7 @@ export default function Detail() {
               ))}
             </div>
 
-            <div className="bg-card/50 border border-border/50 rounded-2xl p-6 mb-8 backdrop-blur-sm">
-              <h3 className="font-semibold text-lg flex items-center gap-2 mb-3 border-b border-border/50 pb-2">
-                <Info className="w-5 h-5 text-primary" /> Synopsis
-              </h3>
-              <p className="text-muted-foreground leading-relaxed text-sm md:text-base">
-                {item.sinopsis || "No synopsis available."}
-              </p>
-            </div>
+            <SynopsisBlock raw={item.sinopsis} />
 
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-10">
               <InfoBox label="Studio" value={item.studio} />
@@ -275,6 +305,43 @@ function InfoBox({ label, value }: { label: string; value?: string | number | nu
     <div className="bg-secondary/30 rounded-lg p-3 border border-border/30">
       <div className="text-xs text-muted-foreground mb-1 uppercase tracking-wider font-semibold">{label}</div>
       <div className="text-sm font-medium text-foreground line-clamp-1" title={String(value)}>{value}</div>
+    </div>
+  );
+}
+
+function SynopsisBlock({ raw }: { raw?: string | null }) {
+  const [expanded, setExpanded] = useState(false);
+
+  const { text } = cleanSynopsis(raw ?? "");
+
+  if (!raw || !text) {
+    return (
+      <div className="bg-card/50 border border-border/50 rounded-2xl p-6 mb-8">
+        <h3 className="font-semibold text-base mb-2">Synopsis</h3>
+        <p className="text-muted-foreground text-sm">No synopsis available.</p>
+      </div>
+    );
+  }
+  const LIMIT = 280;
+  const needsExpand = text.length > LIMIT;
+  const displayed = needsExpand && !expanded ? text.slice(0, LIMIT).trim() + "…" : text;
+
+  return (
+    <div className="bg-card/50 border border-border/50 rounded-2xl p-6 mb-8 backdrop-blur-sm">
+      <h3 className="font-semibold text-base mb-3 border-b border-border/50 pb-2">Synopsis</h3>
+      <p className="text-muted-foreground leading-relaxed text-sm md:text-base">{displayed}</p>
+      {needsExpand && (
+        <button
+          onClick={() => setExpanded(e => !e)}
+          className="mt-3 flex items-center gap-1 text-primary text-sm font-medium hover:text-primary/80 transition-colors"
+        >
+          {expanded ? (
+            <><ChevronUp className="w-4 h-4" /> Tutup</>
+          ) : (
+            <><ChevronDown className="w-4 h-4" /> Baca selengkapnya</>
+          )}
+        </button>
+      )}
     </div>
   );
 }
