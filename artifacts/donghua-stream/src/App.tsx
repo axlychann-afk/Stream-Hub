@@ -1,19 +1,21 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { HelmetProvider } from 'react-helmet-async';
-import { Route, Switch, Router as WouterRouter } from 'wouter';
+import { lazy, Suspense } from "react";
+import { QueryClient, QueryClientProvider, useIsFetching } from "@tanstack/react-query";
+import { HelmetProvider } from "react-helmet-async";
+import { Route, Switch, Router as WouterRouter } from "wouter";
 
-import { Navbar } from '@/components/layout/Navbar';
-import { Footer } from '@/components/layout/Footer';
+import { Navbar } from "@/components/layout/Navbar";
+import { Footer } from "@/components/layout/Footer";
+import { TopLoadingBar } from "@/components/TopLoadingBar";
 
-// Pages
-import Home from '@/pages/home';
-import Ongoing from '@/pages/ongoing';
-import Completed from '@/pages/completed';
-import Upcoming from '@/pages/upcoming';
-import Schedule from '@/pages/schedule';
-import SearchPage from '@/pages/search';
-import Detail from '@/pages/detail';
-import Watch from '@/pages/watch';
+// Lazy-loaded pages — each route is a separate chunk downloaded only when visited
+const Home      = lazy(() => import("@/pages/home"));
+const Ongoing   = lazy(() => import("@/pages/ongoing"));
+const Completed = lazy(() => import("@/pages/completed"));
+const Upcoming  = lazy(() => import("@/pages/upcoming"));
+const Schedule  = lazy(() => import("@/pages/schedule"));
+const SearchPage = lazy(() => import("@/pages/search"));
+const Detail    = lazy(() => import("@/pages/detail"));
+const Watch     = lazy(() => import("@/pages/watch"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -24,6 +26,13 @@ const queryClient = new QueryClient({
     },
   },
 });
+
+/** Minimal dark placeholder shown while a page chunk is downloading */
+function PageFallback() {
+  return (
+    <div className="min-h-screen w-full bg-background" aria-hidden />
+  );
+}
 
 function NotFound() {
   return (
@@ -42,21 +51,24 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <HelmetProvider>
-        <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}>
+        <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+          <TopLoadingBar />
           <div className="min-h-screen flex flex-col bg-background text-foreground font-sans">
             <Navbar />
             <main className="flex-1 w-full">
-              <Switch>
-                <Route path="/" component={Home} />
-                <Route path="/ongoing" component={Ongoing} />
-                <Route path="/completed" component={Completed} />
-                <Route path="/upcoming" component={Upcoming} />
-                <Route path="/schedule" component={Schedule} />
-                <Route path="/search" component={SearchPage} />
-                <Route path="/donghua/:slug" component={Detail} />
-                <Route path="/watch/:seriesSlug/:episodeSlug" component={Watch} />
-                <Route component={NotFound} />
-              </Switch>
+              <Suspense fallback={<PageFallback />}>
+                <Switch>
+                  <Route path="/"                                    component={Home} />
+                  <Route path="/ongoing"                             component={Ongoing} />
+                  <Route path="/completed"                           component={Completed} />
+                  <Route path="/upcoming"                            component={Upcoming} />
+                  <Route path="/schedule"                            component={Schedule} />
+                  <Route path="/search"                              component={SearchPage} />
+                  <Route path="/donghua/:slug"                       component={Detail} />
+                  <Route path="/watch/:seriesSlug/:episodeSlug"      component={Watch} />
+                  <Route                                             component={NotFound} />
+                </Switch>
+              </Suspense>
             </main>
             <Footer />
           </div>
