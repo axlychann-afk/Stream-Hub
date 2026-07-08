@@ -325,10 +325,58 @@ async function parseSuccessBody(
   }
 }
 
+// ---------------------------------------------------------------------------
+// Direct-upstream fallback
+// ---------------------------------------------------------------------------
+//
+// This app is deployed in two shapes:
+//  1. Alongside its own Express API (Replit, Render): relative `/api/...`
+//     calls are proxied/served by that backend.
+//  2. As a static-only bundle (e.g. a misconfigured Vercel project where
+//     `VITE_API_BASE_URL` never made it into the build, or the backend
+//     wasn't deployed at all): there is no server behind `/api/...`, so the
+//     static host's SPA catch-all rewrite returns `index.html` (HTTP 200,
+//     but HTML, not JSON) for every API call.
+//
+// In shape (2) a relative call "succeeds" at the HTTP layer but fails to
+// parse as JSON, which previously surfaced to users as an opaque
+// "gagal memuat" (failed to load) error. Since the upstream Axly API is
+// public and allows CORS from any origin, we can recover automatically by
+// retrying failed relative `/api/donghua/*` GET requests directly against
+// it — no environment configuration required.
+export const AXLY_DIRECT_BASE = "https://axlyapi.qzz.io";
+
+/** Maps a relative `/api/donghua/...` path to its direct Axly equivalent, or null if not applicable. */
+export function toDirectUpstreamUrl(relativeUrl: string): string | null {
+  const match = relativeUrl.match(/^\/api(\/donghua\/.*)$/);
+  return match ? `${AXLY_DIRECT_BASE}${match[1]}` : null;
+}
+
+async function performFetch<T>(
+  input: RequestInfo | URL,
+  init: RequestInit,
+  responseType: "json" | "text" | "blob" | "auto",
+): Promise<T> {
+  const method = resolveMethod(input, init.method);
+  const requestInfo = { method, url: resolveUrl(input) };
+
+  const response = await fetch(input, init);
+
+  if (!response.ok) {
+    const errorData = await parseErrorBody(response, method);
+    throw new ApiError(response, errorData, requestInfo);
+  }
+
+  return (await parseSuccessBody(response, responseType, requestInfo)) as T;
+}
+
 export async function customFetch<T = unknown>(
   input: RequestInfo | URL,
   options: CustomFetchOptions = {},
 ): Promise<T> {
+  const relativeUrl = resolveUrl(input);
+  const wasRelative = !_baseUrl && relativeUrl.startsWith("/");
+
   input = applyBaseUrl(input);
   const { responseType = "auto", headers: headersInit, ...init } = options;
 
@@ -361,14 +409,29 @@ export async function customFetch<T = unknown>(
     }
   }
 
-  const requestInfo = { method, url: resolveUrl(input) };
+  try {
+    return await performFetch<T>(input, { ...init, method, headers }, responseType);
+  } catch (err) {
+    // Only attempt the direct-upstream fallback for unconfigured, relative
+    // GET requests that map onto a known Axly route — never for mutations.
+    if (!wasRelative || method !== "GET") throw err;
 
-  const response = await fetch(input, { ...init, method, headers });
+    const directUrl = toDirectUpstreamUrl(relativeUrl);
+    if (!directUrl) throw err;
 
-  if (!response.ok) {
-    const errorData = await parseErrorBody(response, method);
-    throw new ApiError(response, errorData, requestInfo);
+    const isRecoverable =
+      err instanceof ResponseParseError || // e.g. SPA rewrite returned index.html
+      err instanceof ApiError || // e.g. 404 because no backend is deployed
+      err instanceof TypeError; // e.g. network failure
+
+    if (!isRecoverable) throw err;
+
+    // Never forward credentials to the cross-origin fallback host — this is
+    // a public read-only upstream, not our own backend.
+    const fallbackHeaders = new Headers(headers);
+    fallbackHeaders.delete("authorization");
+    fallbackHeaders.delete("cookie");
+
+    return performFetch<T>(directUrl, { ...init, method, headers: fallbackHeaders }, responseType);
   }
-
-  return (await parseSuccessBody(response, responseType, requestInfo)) as T;
 }

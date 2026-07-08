@@ -5,6 +5,7 @@ import {
   getGetStreamQueryKey,
   getGetDonghuaDetailQueryKey,
   getGetDownloadQueryKey,
+  toDirectUpstreamUrl,
 } from "@workspace/api-client-react";
 // Note: useGetServers removed — using direct fetch below to avoid VideoServer type mismatch
 import { useQuery } from "@tanstack/react-query";
@@ -35,9 +36,31 @@ type AxlyServer = {
 // Build the servers API URL: use VITE_API_BASE_URL if set (Vercel → Axly direct),
 // otherwise use the local proxy path.
 const _apiBase = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/+$/, "");
+
 function serversApiUrl(slug: string) {
   if (_apiBase) return `${_apiBase}/donghua/servers?slug=${encodeURIComponent(slug)}`;
   return `/api/donghua/servers?slug=${encodeURIComponent(slug)}`;
+}
+
+// Fetch the servers list, falling back to calling Axly directly (via the
+// shared mapping in @workspace/api-client-react) if the relative /api path
+// has no backend behind it — e.g. a static-only deploy where a SPA rewrite
+// silently returns index.html instead of JSON/a 404.
+async function fetchServers(slug: string): Promise<{ result?: { servers?: AxlyServer[] } }> {
+  const url = serversApiUrl(slug);
+  try {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`Servers fetch failed: ${res.status}`);
+    const contentType = res.headers.get("content-type") ?? "";
+    if (!contentType.includes("json")) throw new Error("Servers fetch returned non-JSON response");
+    return await res.json();
+  } catch (err) {
+    const directUrl = !_apiBase ? toDirectUpstreamUrl(url) : null;
+    if (!directUrl) throw err;
+    const res = await fetch(directUrl);
+    if (!res.ok) throw new Error(`Servers fetch failed: ${res.status}`);
+    return res.json();
+  }
 }
 
 // Extract embed URL: prefer embed_url, fallback to parsing src from decoded_html
@@ -76,11 +99,7 @@ export default function Watch() {
     refetch: refetchServers,
   } = useQuery<{ result?: { servers?: AxlyServer[] } }>({
     queryKey: ["axly-servers", episodeSlug],
-    queryFn: async () => {
-      const res = await fetch(serversApiUrl(episodeSlug));
-      if (!res.ok) throw new Error(`Servers fetch failed: ${res.status}`);
-      return res.json();
-    },
+    queryFn: () => fetchServers(episodeSlug),
     enabled: !!episodeSlug,
     staleTime: 1000 * 60 * 5,
     retry: 2,
