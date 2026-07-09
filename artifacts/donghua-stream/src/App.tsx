@@ -6,6 +6,7 @@ import { Route, Switch, Router as WouterRouter } from "wouter";
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
 import { TopLoadingBar } from "@/components/TopLoadingBar";
+import { AuthProvider } from "@/hooks/useAuth";
 
 // Lazy-loaded pages — each route is a separate chunk downloaded only when visited
 const Home      = lazy(() => import("@/pages/home"));
@@ -16,6 +17,9 @@ const Schedule  = lazy(() => import("@/pages/schedule"));
 const SearchPage = lazy(() => import("@/pages/search"));
 const Detail    = lazy(() => import("@/pages/detail"));
 const Watch     = lazy(() => import("@/pages/watch"));
+const Login     = lazy(() => import("@/pages/login"));
+const Register  = lazy(() => import("@/pages/register"));
+const Profile   = lazy(() => import("@/pages/profile"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -51,28 +55,33 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <HelmetProvider>
-        <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-          <TopLoadingBar />
-          <div className="min-h-screen flex flex-col bg-background text-foreground font-sans">
-            <Navbar />
-            <main className="flex-1 w-full">
-              <Suspense fallback={<PageFallback />}>
-                <Switch>
-                  <Route path="/"                                    component={Home} />
-                  <Route path="/ongoing"                             component={Ongoing} />
-                  <Route path="/completed"                           component={Completed} />
-                  <Route path="/upcoming"                            component={Upcoming} />
-                  <Route path="/schedule"                            component={Schedule} />
-                  <Route path="/search"                              component={SearchPage} />
-                  <Route path="/donghua/:slug"                       component={Detail} />
-                  <Route path="/watch/:seriesSlug/:episodeSlug"      component={Watch} />
-                  <Route                                             component={NotFound} />
-                </Switch>
-              </Suspense>
-            </main>
-            <Footer />
-          </div>
-        </WouterRouter>
+        <AuthProvider>
+          <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+            <TopLoadingBar />
+            <div className="min-h-screen flex flex-col bg-background text-foreground font-sans">
+              <Navbar />
+              <main className="flex-1 w-full">
+                <Suspense fallback={<PageFallback />}>
+                  <Switch>
+                    <Route path="/"                                    component={Home} />
+                    <Route path="/ongoing"                             component={Ongoing} />
+                    <Route path="/completed"                           component={Completed} />
+                    <Route path="/upcoming"                            component={Upcoming} />
+                    <Route path="/schedule"                            component={Schedule} />
+                    <Route path="/search"                              component={SearchPage} />
+                    <Route path="/donghua/:slug"                       component={Detail} />
+                    <Route path="/watch/:seriesSlug/:episodeSlug"      component={Watch} />
+                    <Route path="/login"                               component={Login} />
+                    <Route path="/register"                            component={Register} />
+                    <Route path="/profile"                             component={Profile} />
+                    <Route                                             component={NotFound} />
+                  </Switch>
+                </Suspense>
+              </main>
+              <Footer />
+            </div>
+          </WouterRouter>
+        </AuthProvider>
       </HelmetProvider>
     </QueryClientProvider>
   );

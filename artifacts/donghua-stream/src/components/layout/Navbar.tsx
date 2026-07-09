@@ -1,8 +1,10 @@
-import { Search, Menu, X, Play } from "lucide-react";
+import { Search, Menu, X, Play, User } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useSearchDonghua } from "@workspace/api-client-react";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/hooks/useAuth";
+import { avatarUrl } from "@/lib/authApi";
 
 const NAV_LINKS = [
   { href: "/", label: "Home" },
@@ -132,6 +134,42 @@ function SearchBar({
   );
 }
 
+function AuthLinks({ onNavigate }: { onNavigate?: () => void }) {
+  const { user, isLoading } = useAuth();
+
+  if (isLoading) return <div className="w-8 h-8 rounded-full bg-secondary/50 animate-pulse" />;
+
+  if (!user) {
+    return (
+      <div className="flex items-center gap-2">
+        <Link
+          href="/login"
+          onClick={onNavigate}
+          className="px-3 py-1.5 rounded-full text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+        >
+          Log In
+        </Link>
+        <Link
+          href="/register"
+          onClick={onNavigate}
+          className="px-3.5 py-1.5 rounded-full text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+        >
+          Sign Up
+        </Link>
+      </div>
+    );
+  }
+
+  return (
+    <Link href="/profile" onClick={onNavigate} className="flex items-center gap-2 group">
+      <img src={avatarUrl(user.avatarSeed)} alt={user.displayName} className="w-8 h-8 rounded-full border border-border" />
+      <span className="text-sm font-medium hidden lg:block group-hover:text-primary transition-colors">
+        {user.displayName}
+      </span>
+    </Link>
+  );
+}
+
 export function Navbar() {
   const [location, setLocation] = useLocation();
   const [searchQuery, setSearchQuery] = useState("");
@@ -214,6 +252,10 @@ export function Navbar() {
             inputClassName="w-56 md:w-64"
           />
 
+          <div className="hidden sm:block">
+            <AuthLinks />
+          </div>
+
           <button
             className="md:hidden p-2 text-muted-foreground hover:text-foreground z-50"
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
@@ -262,6 +304,10 @@ export function Navbar() {
                 {link.label}
               </Link>
             ))}
+          </div>
+
+          <div className="mt-2 pt-4 border-t border-border">
+            <AuthLinks onNavigate={() => setMobileMenuOpen(false)} />
           </div>
         </div>
       </div>
