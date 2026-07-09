@@ -2,17 +2,11 @@ import { Router, type IRouter } from "express";
 import axios from "axios";
 import healthRouter from "./health";
 import donghuaRouter from "./donghua/index.js";
-import authRouter from "./auth/index.js";
-import profileRouter from "./profile/index.js";
-import commentsRouter from "./comments/index.js";
 
 const router: IRouter = Router();
 
 router.use(healthRouter);
 router.use("/donghua", donghuaRouter);
-router.use("/auth", authRouter);
-router.use("/profile", profileRouter);
-router.use("/comments", commentsRouter);
 
 // Image proxy — fetches CDN images server-side to bypass hotlink protection
 router.get("/image-proxy", async (req, res) => {
