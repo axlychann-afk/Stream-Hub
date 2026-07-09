@@ -23,7 +23,6 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useEffect, useRef, useState } from "react";
-import { CommentSection } from "@/components/CommentSection";
 
 // Axly server shape returned by /donghua/servers
 type AxlyServer = {
@@ -431,8 +430,6 @@ export default function Watch() {
           </div>
         </div>
       </div>
-
-      {seriesSlug && episodeSlug && <CommentSection seriesSlug={seriesSlug} episodeSlug={episodeSlug} />}
 
     </div>
   );
