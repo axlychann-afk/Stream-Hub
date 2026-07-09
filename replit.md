@@ -13,15 +13,6 @@ A streaming website for Chinese animation (donghua). Provides a browsable catalo
 - `pnpm --filter @workspace/db run push` — push DB schema changes to Postgres (dev only)
 - Required env: `DATABASE_URL` — Postgres connection string (needed by the API server and DB package)
 
-## Accounts, Profiles & Comments
-
-- Users can sign up / log in (email + password, bcrypt-hashed) and get a cookie session (`express-session` backed by Postgres via `connect-pg-simple`, table `user_sessions`).
-- Profile settings (`/profile` page) let a user set their display name, a short bio, and pick an avatar from a **fixed preset list** (DiceBear-seeded, no image uploads) — enforced both in the UI and server-side (`updateProfileSchema` uses a `zod` enum of the same presets), so profile pictures can never contain adult/NSFW images.
-- Display names and bios are checked against a wordlist-based profanity/NSFW filter (`artifacts/api-server/src/lib/moderation.ts`, English + Indonesian terms) and rejected if they match.
-- Each episode (`seriesSlug` + `episodeSlug`) has its own comment thread, shown below the download section on the watch page. Comments are plain text only (HTML is rejected), max 500 characters, and pass through the same profanity/NSFW filter. Users can delete their own comments.
-- Security hardening: rate limiting on auth (10/15min) and comments (15/5min) via `express-rate-limit`, session regeneration on login/register (prevents session fixation), `SameSite=Lax` + `httpOnly` cookies (`secure` in production), CORS origin allowlist via `ALLOWED_ORIGINS` (comma-separated) when `NODE_ENV=production`, `trust proxy` enabled for correct client IPs/secure cookies behind a reverse proxy.
-- New tables: `users`, `comments`, `user_sessions` (see `lib/db/src/schema/`). Push schema changes with `pnpm --filter @workspace/db run push`.
-
 ## API Endpoints
 
 All routes are prefixed `/api/donghua/`:
