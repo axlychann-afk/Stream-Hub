@@ -38,28 +38,38 @@ function normalize(s: string): string {
  * new line here only after confirming (via the Dailymotion API) that the
  * abbreviation on the channel really corresponds to that series slug.
  */
-const SERIES_ALIASES: Record<string, string> = {
-  "oyen-pertempuran-akhir-sekte-misty-cloud": "btth", // "BTTH Season 5" on-site
-  "coiling-dragon": "coilingdragon",
-  "ever-night": "evernight",
-  "perfect-world": "perfectworld",
-  "azure-legacy": "azurelegacy",
-  "my-senior-brother-is-too-steady": "msbs",
-  "way-of-choices": "wayofchoices",
-  "renegade-immortal": "renegadeimmortal",
-  "swallowed-star": "swallowedstar",
-  "shrouding-the-heavens": "shroudingtheheavens",
-  "tomb-of-fallen-gods-season-3": "tomboffallengods3",
-  "the-great-ruler": "thegreatruler",
-  "walking-the-way-all-alone": "walkingthewayalone",
-  "in-search-of-gods": "insearchofgods",
-  "tales-of-herding-god": "talesofherdinggods",
-  "purple-river-season-2": "purpleriver2",
-  "slay-the-gods-season-2": "slaythegods2",
-  "the-other-side-of-deep-space": "theothersidedeepspace",
-  "eclipse-of-illusion-special-the-miasma-war": "eclipseofillusionspecialthemiasmawar",
-  "100-000-years-of-refining-qi": "100000refiningqi",
-  "a-record-of-a-mortals-journey-to-immortality": "armji",
+const SERIES_ALIASES: Record<string, string[]> = {
+  "btth-season-5": ["btth", "doupocangqiong5"], // "BTTH Season 5" on-site — episode slugs use this prefix even though the series detail-page slug is "oyen-pertempuran-akhir-sekte-misty-cloud"; uploader labels this show either "BTTH" or its Chinese pinyin title "Doupo Cangqiong"
+  "coiling-dragon": ["coilingdragon"],
+  "ever-night": ["evernight"],
+  "perfect-world": ["perfectworld"],
+  "azure-legacy": ["azurelegacy"],
+  "my-senior-brother-is-too-steady": ["msbs"],
+  "way-of-choices": ["wayofchoices"],
+  "renegade-immortal": ["renegadeimmortal"],
+  "swallowed-star": ["swallowedstar"],
+  // anichin's episode slugs are inconsistently spelled across this show's run —
+  // older episodes use the typo "shrounding", newer ones the correct
+  // "shrouding" — so both prefixes are mapped to the same code.
+  "shrounding-the-heavens": ["shroudingtheheavens"],
+  "shrouding-the-heavens": ["shroudingtheheavens"],
+  "tomb-of-fallen-gods-season-3": ["tomboffallengods3"],
+  "the-great-ruler": ["thegreatruler"],
+  "walking-the-way-all-alone": ["walkingthewayalone"],
+  "in-search-of-gods": ["insearchofgods"],
+  "tales-of-herding-god": ["talesofherdinggods"],
+  "purple-river-season-2": ["purpleriver2"],
+  "slay-the-gods-season-2": ["slaythegods2"],
+  "the-other-side-of-deep-space": ["theothersidedeepspace"],
+  "eclipse-of-illusion-special-the-miasma-war": ["eclipseofillusionspecialthemiasmawar"],
+  "100-000-years-of-refining-qi": ["100000refiningqi"],
+  // NOTE: no confirmed alias for ARMJI — the site's "remake" season only has 8
+  // episodes while the channel's "ARMJI" uploads are at ep 180+ (a different,
+  // longer-running adaptation we don't currently carry). Do not add a mapping
+  // here without finding an on-site season whose episode range actually
+  // overlaps the channel uploads.
+  "beyond-times-gaze": ["beyondtimesgaze"],
+  "dragons-triumph-in-the-celestial-realm": ["dragonstriumphcelestialrealm"],
 };
 
 /**
@@ -142,13 +152,13 @@ export function parseEpisodeSlug(slug: string): { seriesSlug: string; episodeNum
 export async function getDailymotionServer(episodeSlug: string): Promise<VideoServer | null> {
   const parsed = parseEpisodeSlug(episodeSlug);
   if (!parsed) return null;
-  const code = SERIES_ALIASES[parsed.seriesSlug];
-  if (!code) return null;
+  const codes = SERIES_ALIASES[parsed.seriesSlug];
+  if (!codes || codes.length === 0) return null;
 
   try {
     const entries = await getEntries();
     const matches = entries.filter(
-      (e) => e.code === code && parsed.episodeNumber >= e.epStart && parsed.episodeNumber <= e.epEnd
+      (e) => codes.includes(e.code) && parsed.episodeNumber >= e.epStart && parsed.episodeNumber <= e.epEnd
     );
     if (matches.length === 0) return null;
     matches.sort((a, b) => b.createdTime - a.createdTime);
