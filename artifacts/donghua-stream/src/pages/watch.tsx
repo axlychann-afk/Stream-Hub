@@ -63,6 +63,39 @@ async function fetchServers(slug: string): Promise<{ result?: { servers?: AxlySe
   }
 }
 
+// Servers that block iframe embedding — hidden regardless of source
+const BLOCKED_SERVERS = ["dailymotion", "okru", "ok.ru"];
+function isServerBlocked(name: string, url: string) {
+  const h = `${name} ${url}`.toLowerCase();
+  return BLOCKED_SERVERS.some((b) => h.includes(b));
+}
+
+// Convert anichin slug → Animasu slug format
+// e.g. "apotheosis-episode-01-subtitle-indonesia" → "nonton-apotheosis-episode-1"
+function toAnimasuSlug(slug: string): string {
+  if (slug.startsWith("nonton-")) return slug;
+  const m = slug.match(/^(.+?)-episode-0*(\d+)(?:-subtitle.*)?$/i);
+  if (m) return `nonton-${m[1]}-episode-${parseInt(m[2], 10)}`;
+  return `nonton-${slug}`;
+}
+
+// Fetch Animasu servers directly from Axly (CORS-open) — works on Vercel with no backend
+async function fetchAnimasuServersDirect(slug: string): Promise<AxlyServer[]> {
+  try {
+    const animasuSlug = toAnimasuSlug(slug);
+    const url = `https://axlyapi.qzz.io/anime/animasu/stream?url=${encodeURIComponent(`https://v1.animasu.work/${animasuSlug}/`)}`;
+    const res = await fetch(url);
+    if (!res.ok) return [];
+    const data = await res.json() as { status?: boolean; result?: { dropdown_servers?: AxlyServer[] } };
+    if (!data?.status || !data?.result?.dropdown_servers) return [];
+    return data.result.dropdown_servers
+      .filter((s) => !isServerBlocked(s.label ?? s.name ?? "", s.embed_url ?? ""))
+      .map((s) => ({ ...s, label: `[Animasu] ${s.label ?? s.name ?? "Server"}` }));
+  } catch {
+    return [];
+  }
+}
+
 // Extract embed URL: prefer embed_url, fallback to parsing src from decoded_html
 function extractEmbedUrl(server: AxlyServer): string {
   if (server.embed_url) return server.embed_url;
@@ -105,6 +138,15 @@ export default function Watch() {
     retry: 2,
   });
 
+  // Fetch Animasu servers directly from browser — works on Vercel (no backend needed)
+  const { data: animasuServers = [] } = useQuery<AxlyServer[]>({
+    queryKey: ["animasu-servers", episodeSlug],
+    queryFn: () => fetchAnimasuServersDirect(episodeSlug),
+    enabled: !!episodeSlug,
+    staleTime: 1000 * 60 * 5,
+    retry: 1,
+  });
+
   const {
     data: downloadData,
     isLoading: downloadLoading,
@@ -145,12 +187,14 @@ export default function Watch() {
   const currentEpInfo = currentIndex !== -1 ? episodes[currentIndex] : null;
   const stream = streamData?.result;
 
-  // Build the server list from the direct Axly fetch result, excluding blocked embeds
-  const BLOCKED = ["dailymotion", "okru", "ok.ru"];
-  const servers: AxlyServer[] = (serversData?.result?.servers ?? []).filter((s) => {
-    const haystack = `${s.label ?? ""} ${s.name ?? ""} ${s.embed_url ?? ""}`.toLowerCase();
-    return !BLOCKED.some((b) => haystack.includes(b));
-  });
+  // Build server list: anichin servers (via backend/direct Axly) + Animasu (direct browser fetch)
+  // Deduped by embed_url, blocked servers filtered out
+  const primaryServers = (serversData?.result?.servers ?? []).filter(
+    (s) => !isServerBlocked(s.label ?? s.name ?? "", s.embed_url ?? "")
+  );
+  const seenUrls = new Set(primaryServers.map((s) => s.embed_url ?? ""));
+  const extraServers = animasuServers.filter((s) => s.embed_url && !seenUrls.has(s.embed_url));
+  const servers: AxlyServer[] = [...primaryServers, ...extraServers];
   const activeEmbedUrl = (servers[selectedServer] ? extractEmbedUrl(servers[selectedServer]) : "") || stream?.embed_url || "";
 
   const downloads = (downloadData?.result?.downloads ?? []).filter(
