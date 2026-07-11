@@ -63,11 +63,17 @@ async function fetchServers(slug: string): Promise<{ result?: { servers?: AxlySe
   }
 }
 
-// Servers that block iframe embedding — hidden regardless of source
-const BLOCKED_SERVERS = ["dailymotion", "okru", "ok.ru"];
+// Servers confirmed to block iframe embedding entirely — hidden
+const BLOCKED_SERVERS = ["dailymotion"];
 function isServerBlocked(name: string, url: string) {
   const h = `${name} ${url}`.toLowerCase();
   return BLOCKED_SERVERS.some((b) => h.includes(b));
+}
+
+// Servers that may not embed reliably — shown with a ⚠ warning
+function isServerUnreliable(name: string, url: string) {
+  const h = `${name} ${url}`.toLowerCase();
+  return h.includes("ok.ru") || h.includes("okru");
 }
 
 // Convert anichin slug → Animasu slug format
@@ -272,20 +278,25 @@ export default function Watch() {
               ) : servers.length === 0 ? (
                 <span className="text-xs text-muted-foreground">Tidak ada server tersedia.</span>
               ) : (
-                servers.map((server, idx) => (
-                  <button
-                    key={idx}
-                    onClick={() => setSelectedServer(idx)}
-                    className={cn(
-                      "px-2.5 py-1 rounded-md text-xs font-medium transition-all shrink-0",
-                      selectedServer === idx
-                        ? "bg-primary text-primary-foreground shadow-sm"
-                        : "bg-secondary hover:bg-secondary/70 text-foreground"
-                    )}
-                  >
-                    {getServerLabel(server)}
-                  </button>
-                ))
+                servers.map((server, idx) => {
+                  const unreliable = isServerUnreliable(server.label ?? server.name ?? "", server.embed_url ?? "");
+                  return (
+                    <button
+                      key={idx}
+                      onClick={() => setSelectedServer(idx)}
+                      title={unreliable ? "Server ini mungkin tidak bisa diplay (embed dibatasi)" : undefined}
+                      className={cn(
+                        "px-2.5 py-1 rounded-md text-xs font-medium transition-all shrink-0 flex items-center gap-1",
+                        selectedServer === idx
+                          ? "bg-primary text-primary-foreground shadow-sm"
+                          : "bg-secondary hover:bg-secondary/70 text-foreground"
+                      )}
+                    >
+                      {unreliable && <span>⚠</span>}
+                      {getServerLabel(server)}
+                    </button>
+                  );
+                })
               )}
             </div>
 

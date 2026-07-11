@@ -7,8 +7,8 @@ const ANIMASU_EPISODE_BASE = "https://v1.animasu.work";
 const ANICHIN_BASE = "https://anichin.moe";
 const REQUEST_TIMEOUT = 20000;
 
-// Servers blocked from appearing in the player (set X-Frame-Options / CSP that prevent embedding)
-const BLOCKED_SERVERS = ["dailymotion", "okru", "ok.ru"];
+// Servers blocked from appearing in the player (confirmed to block iframe embedding)
+const BLOCKED_SERVERS = ["dailymotion"];
 export function isServerBlocked(name: string, url: string): boolean {
   const haystack = `${name} ${url}`.toLowerCase();
   return BLOCKED_SERVERS.some((b) => haystack.includes(b));
