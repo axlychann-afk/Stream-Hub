@@ -1,7 +1,6 @@
 import { useGetTrending, useGetSchedule } from "@workspace/api-client-react";
 import { useGetPopular } from "@/hooks/usePopular";
 import { HeroBanner } from "@/components/HeroBanner";
-import { AdBanner } from "@/components/AdBanner";
 import { HorizontalRow } from "@/components/HorizontalRow";
 import { DonghuaCard, DonghuaCardSkeleton } from "@/components/DonghuaCard";
 import { Link } from "wouter";
@@ -94,9 +93,6 @@ export default function Home() {
           isLoading={popularLoading}
           skeletonCount={8}
         />
-
-        {/* Ad banner */}
-        <AdBanner />
 
         {/* 2. Latest Release — grid */}
         <section>
