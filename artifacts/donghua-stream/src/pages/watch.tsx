@@ -66,8 +66,14 @@ async function fetchServers(slug: string): Promise<{ result?: { servers?: AxlySe
 
 // Servers confirmed to block iframe embedding entirely — hidden
 const BLOCKED_SERVERS = ["dailymotion"];
+// Marker appended to embed_url for our own verified dongchindopro Dailymotion
+// lookups (see api-server dailymotion.ts) — those videos are confirmed
+// embeddable, unlike the ad-hoc Dailymotion links anichin/Animasu sometimes
+// scrape, which is why "dailymotion" is blocked by default above.
+const TRUSTED_DAILYMOTION_MARKER = "dcsrc=dongchindopro";
 function isServerBlocked(name: string, url: string) {
   const h = `${name} ${url}`.toLowerCase();
+  if (h.includes("dailymotion") && url.includes(TRUSTED_DAILYMOTION_MARKER)) return false;
   return BLOCKED_SERVERS.some((b) => h.includes(b));
 }
 

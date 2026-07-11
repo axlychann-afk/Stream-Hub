@@ -50,7 +50,10 @@ Streaming website for Chinese animation (Donghua) with Indonesian subtitles. Scr
 
 - After every OpenAPI spec change, always run `pnpm --filter @workspace/api-spec run codegen`
 - The scraper depends on anichin.moe HTML structure — if that site changes layout, selectors in `scraper.ts` need updating
-- `@workspace/db` is NOT used by this project (no DATABASE_URL needed)
+- `@workspace/db` is NOT used by this project (no DATABASE_URL needed) — but `src/lib/session.ts`, `routes/auth`, `routes/comments`, `routes/profile` import it plus `express-session`/`drizzle-orm`/`bcryptjs`/`pg`, none of which are installed; `pnpm run typecheck` fails on those files. Pre-existing, unrelated to scraping/Dailymotion work — needs its own fix pass (install deps or remove unused auth scaffolding) before those routes can build.
+- The API server's `dev` script (`build && start`) is NOT watch mode — editing `src/**` requires restarting the `artifacts/api-server: API Server` workflow before changes take effect; the running process keeps serving the old bundle otherwise.
+- Dailymotion embeds are blocked by default (`BLOCKED_SERVERS` in `scraper.ts` and `watch.tsx`) because ad-hoc Dailymotion links scraped from anichin/Animasu are often not embeddable. Our own verified `dongchindopro` channel lookups (`routes/donghua/dailymotion.ts`) are exempted via a `dcsrc=dongchindopro` marker on the embed URL — don't remove that marker or the frontend will silently hide the server again.
+- Dailymotion series matching (`dailymotion.ts` `SERIES_ALIASES`) is an explicit, manually maintained slug→code map — intentionally NOT fuzzy, because the channel's upload titles use ad-hoc abbreviations (BTTH, ARMJI, MSBS...) that can't be derived from our slugs. Add new series only after confirming the mapping via the Dailymotion API; an unmapped series just gets no Dailymotion server (safe), never a wrong one.
 
 ## User preferences
 

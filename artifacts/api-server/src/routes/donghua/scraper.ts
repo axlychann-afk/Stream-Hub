@@ -1,5 +1,6 @@
 import axios from "axios";
 import * as cheerio from "cheerio";
+import { getDailymotionServer } from "./dailymotion.js";
 
 const AXLY_BASE = "https://axlyapi.qzz.io/donghua";
 const AXLY_ANIMASU_BASE = "https://axlyapi.qzz.io/anime/animasu";
@@ -632,6 +633,10 @@ export async function scrapeServers(slug: string): Promise<ServersInfo> {
     if (vidioUrl) servers.push({ name: "Vidio", embed_url: vidioUrl });
   }
 
+  // Best-effort extra server from the dongchindopro Dailymotion channel (opt-in per series, see dailymotion.ts)
+  const dailymotionServer = await getDailymotionServer(slug);
+  if (dailymotionServer) servers.push(dailymotionServer);
+
   return {
     title,
     slug: titleSlug,
@@ -710,6 +715,10 @@ export async function scrapeStream(slug: string): Promise<StreamInfo> {
   // Merge anichin + Animasu servers (deduplicated by embed_url)
   const extras = animasuServers.status === "fulfilled" ? animasuServers.value : [];
   const servers = mergeServers(anichinServers, extras);
+
+  // Best-effort extra server from the dongchindopro Dailymotion channel (opt-in per series, see dailymotion.ts)
+  const dailymotionServer = await getDailymotionServer(slug);
+  if (dailymotionServer) servers.push(dailymotionServer);
 
   // Primary embed_url: first server, fallback to /stream embed_url
   const streamEmbed = streamRes.status === "fulfilled"
