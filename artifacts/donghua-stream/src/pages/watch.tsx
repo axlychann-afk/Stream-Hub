@@ -503,8 +503,10 @@ export default function Watch() {
               )}
             </div>
 
-            {/* Ad — fills the empty space below the playlist */}
-            <div className="shrink-0 flex flex-col items-center justify-center gap-3 py-4 border-t border-border bg-muted/10">
+            {/* Ad — fills the empty space below the playlist. Hidden on mobile/tablet
+                where the sidebar is a short fixed-height box with no room to spare;
+                only shown once the sidebar switches to its tall desktop layout. */}
+            <div className="hidden lg:flex shrink-0 flex-col items-center justify-center gap-3 py-4 border-t border-border bg-muted/10">
               <AdBanner adKey="8550b721f8992c34a1b4334a029889ce" width={160} height={300} />
               <AdBanner adKey="54eecf233aa963e10a7f564f1b75648f" width={300} height={250} className="hidden xl:block" />
               <AdBanner adKey="4b070b67a7290768f9985c8873046c56" width={160} height={600} className="hidden xl:block" />
