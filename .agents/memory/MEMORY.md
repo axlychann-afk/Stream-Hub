@@ -1,0 +1,1 @@
+- [Adsterra popunder mobile quirk](adsterra-popunder-mobile.md) — popunder/social-bar scripts can appear broken on mobile but it's usually ad-network device targeting/no-fill, not app code.
