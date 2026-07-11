@@ -510,10 +510,16 @@ export async function scrapeServers(slug: string): Promise<ServersInfo> {
   const r = data.result;
   const servers: VideoServer[] = [];
 
+  const BLOCKED_SERVERS = ["dailymotion", "okru", "ok.ru"];
+  const isBlocked = (name: string, url: string) => {
+    const haystack = `${name} ${url}`.toLowerCase();
+    return BLOCKED_SERVERS.some((b) => haystack.includes(b));
+  };
+
   for (const s of r.servers ?? []) {
     const name = typeof s.label === "string" ? s.label.trim() : "";
     const embed_url = typeof s.embed_url === "string" ? s.embed_url.trim() : "";
-    if (name && embed_url) servers.push({ name, embed_url });
+    if (name && embed_url && !isBlocked(name, embed_url)) servers.push({ name, embed_url });
   }
 
   // Try to add Vidio from the episode page if not already present
@@ -584,12 +590,18 @@ export async function scrapeStream(slug: string): Promise<StreamInfo> {
   }
 
   // Build servers list from /servers endpoint
+  const BLOCKED_SERVERS_STREAM = ["dailymotion", "okru", "ok.ru"];
+  const isBlockedStream = (name: string, url: string) => {
+    const haystack = `${name} ${url}`.toLowerCase();
+    return BLOCKED_SERVERS_STREAM.some((b) => haystack.includes(b));
+  };
+
   const servers: VideoServer[] = [];
   if (serversRes.status === "fulfilled" && serversRes.value.data?.status && serversRes.value.data?.result?.servers) {
     for (const s of serversRes.value.data.result.servers) {
       const name = typeof s.label === "string" ? s.label.trim() : "";
       const embed_url = typeof s.embed_url === "string" ? s.embed_url.trim() : "";
-      if (name && embed_url) servers.push({ name, embed_url });
+      if (name && embed_url && !isBlockedStream(name, embed_url)) servers.push({ name, embed_url });
     }
     // Use title from /servers if /stream failed
     if (title === "Donghua Episode" && serversRes.value.data.result.title) {
