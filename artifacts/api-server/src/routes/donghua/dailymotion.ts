@@ -141,6 +141,45 @@ async function getEntries(): Promise<DmEntry[]> {
 }
 
 /**
+ * Lists every episode number the dongchindopro channel has uploaded for a
+ * series, with each episode's newest matching upload. Used to surface
+ * episodes Dailymotion has published ahead of anichin.moe listing them —
+ * dongchindopro often uploads before anichin's own episode page goes up.
+ * Returns [] (never throws) if the series has no confirmed alias or the
+ * channel lookup fails.
+ */
+export async function listDailymotionEpisodes(
+  seriesSlug: string
+): Promise<Array<{ episodeNumber: number; videoId: string; createdTime: number }>> {
+  const codes = SERIES_ALIASES[seriesSlug];
+  if (!codes || codes.length === 0) return [];
+
+  try {
+    const entries = await Promise.race([
+      getEntries(),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), LOOKUP_BUDGET_MS)),
+    ]);
+    if (!entries) return [];
+
+    const relevant = entries.filter((e) => codes.includes(e.code));
+    const byEpisode = new Map<number, { videoId: string; createdTime: number }>();
+    for (const e of relevant) {
+      for (let ep = e.epStart; ep <= e.epEnd; ep++) {
+        const existing = byEpisode.get(ep);
+        if (!existing || e.createdTime > existing.createdTime) {
+          byEpisode.set(ep, { videoId: e.videoId, createdTime: e.createdTime });
+        }
+      }
+    }
+    return Array.from(byEpisode.entries())
+      .map(([episodeNumber, v]) => ({ episodeNumber, ...v }))
+      .sort((a, b) => a.episodeNumber - b.episodeNumber);
+  } catch {
+    return [];
+  }
+}
+
+/**
  * Extracts {seriesSlug, episodeNumber} from an anichin-style episode slug,
  * e.g. "coiling-dragon-episode-14-subtitle-indonesia" -> { seriesSlug: "coiling-dragon", episodeNumber: 14 }.
  */

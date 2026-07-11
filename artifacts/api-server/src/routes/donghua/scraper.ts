@@ -1,6 +1,6 @@
 import axios from "axios";
 import * as cheerio from "cheerio";
-import { getDailymotionServer } from "./dailymotion.js";
+import { getDailymotionServer, listDailymotionEpisodes } from "./dailymotion.js";
 
 const AXLY_BASE = "https://axlyapi.qzz.io/donghua";
 const AXLY_ANIMASU_BASE = "https://axlyapi.qzz.io/anime/animasu";
@@ -475,6 +475,8 @@ async function scrapeDetailFromAnichin(slug: string): Promise<DonghuaDetail> {
     throw new Error(`Detail not found for slug: ${slug} (no episodes on anichin page)`);
   }
 
+  const withDm = await withDailymotionEpisodes(slug, episodes);
+
   return {
     title,
     alternative,
@@ -487,13 +489,44 @@ async function scrapeDetailFromAnichin(slug: string): Promise<DonghuaDetail> {
     duration: getMeta("duration") || getMeta("durasi"),
     season: getMeta("season"),
     country: getMeta("country") || getMeta("negara"),
-    totalEpisodes: episodes.length || getMeta("episodes") || getMeta("episode"),
+    totalEpisodes: withDm.length || getMeta("episodes") || getMeta("episode"),
     subber: getMeta("subber"),
     genres,
     sinopsis,
     cover: cover && !cover.startsWith("data:") ? cover : null,
-    episodes,
+    episodes: withDm,
   };
+}
+
+/**
+ * The dongchindopro Dailymotion channel (see dailymotion.ts) often uploads an
+ * episode before anichin.moe's own episode page for it exists. Since anichin
+ * is our only source for the episode *list*, a newly-uploaded episode would
+ * otherwise be invisible on-site until anichin catches up — even though it's
+ * already watchable via Dailymotion. This appends synthetic entries for any
+ * episode number Dailymotion has that isn't in the anichin-sourced list yet,
+ * so Dailymotion effectively gets priority for episode *availability* while
+ * anichin/Animasu still win the tie when both have an episode indexed (see
+ * scrapeServers/scrapeStream, which race all sources for the per-episode
+ * server list). No-op for series without a confirmed Dailymotion alias.
+ */
+async function withDailymotionEpisodes(seriesSlug: string, episodes: Episode[]): Promise<Episode[]> {
+  const dmEpisodes = await listDailymotionEpisodes(seriesSlug);
+  if (dmEpisodes.length === 0) return episodes;
+
+  const known = new Set(episodes.map((e) => e.number));
+  const extra: Episode[] = dmEpisodes
+    .filter((e) => !known.has(e.episodeNumber))
+    .map((e) => ({
+      number: e.episodeNumber,
+      title: `Episode ${e.episodeNumber}`,
+      url: "",
+      slug: `${seriesSlug}-episode-${String(e.episodeNumber).padStart(2, "0")}-subtitle-indonesia`,
+      date: new Date(e.createdTime * 1000).toISOString(),
+    }));
+  if (extra.length === 0) return episodes;
+
+  return [...episodes, ...extra].sort((a, b) => a.number - b.number);
 }
 
 export async function scrapeDetail(slug: string): Promise<DonghuaDetail> {
@@ -524,11 +557,14 @@ export async function scrapeDetail(slug: string): Promise<DonghuaDetail> {
     };
   });
 
+  const withDm = await withDailymotionEpisodes(slug, episodes);
+
   const totalEps = r.totalEpisodes;
   const totalEpisodes: string | number =
     typeof totalEps === "string" || typeof totalEps === "number"
-      ? totalEps
-      : episodes.length;
+      ? Math.max(typeof totalEps === "number" ? totalEps : parseInt(totalEps, 10) || 0, withDm.length) ||
+        totalEps
+      : withDm.length;
 
   return {
     title: str(r.title),
@@ -549,7 +585,7 @@ export async function scrapeDetail(slug: string): Promise<DonghuaDetail> {
       : [],
     sinopsis: str(r.sinopsis),
     cover: typeof r.cover === "string" ? r.cover : null,
-    episodes,
+    episodes: withDm,
   };
 }
 
@@ -637,10 +673,12 @@ export async function scrapeServers(slug: string): Promise<ServersInfo> {
 
   let servers = mergeServers(anichinServers, animasuServers);
 
-  // If both sources returned nothing, throw so the route returns a proper error
-  if (servers.length === 0 && anichinSettled.status !== "fulfilled") {
-    throw new Error(`Servers not found for slug: ${slug}`);
-  }
+  // NOTE: anichin's own /servers endpoint 404s (axios rejects, so
+  // anichinSettled is "rejected") for episodes it hasn't indexed yet — e.g.
+  // one dongchindopro already uploaded to Dailymotion ahead of anichin. We no
+  // longer bail out early on that alone (see the check after Dailymotion is
+  // appended below), so a brand-new episode that only exists on Dailymotion
+  // still resolves successfully instead of erroring out.
 
   // Try to add Vidio from the episode page if not already present
   const hasVidio = servers.some((s) => s.name.toLowerCase().includes("vidio") || s.embed_url.includes("vidio.com"));
@@ -655,6 +693,13 @@ export async function scrapeServers(slug: string): Promise<ServersInfo> {
   // Axly yet) but Dailymotion already has it, this ends up being the only server
   // offered — which is the desired "whichever source has it first, wins" behavior.
   if (dailymotionServer) servers.push(dailymotionServer);
+
+  // Only now — after Dailymotion has had a chance to fill in for an episode
+  // anichin/Axly don't know about yet — do we treat "nothing at all" as an
+  // error.
+  if (servers.length === 0) {
+    throw new Error(`Servers not found for slug: ${slug}`);
+  }
 
   return {
     title,
