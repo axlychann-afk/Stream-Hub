@@ -1,74 +1,57 @@
 # DonghuaStream
 
-A streaming website for Chinese animation (donghua). Provides a browsable catalog, episode streaming, download links, and airing schedules — all sourced from anichin.moe via the Axly API.
+Streaming website for Chinese animation (Donghua) with Indonesian subtitles. Scrapes anichin.moe in real-time — no database required.
 
 ## Run & Operate
 
-- **API server** runs on port 8080 via the `artifacts/api-server: API Server` workflow
-- **Frontend** runs on port 18837 via the `artifacts/donghua-stream: web` workflow (requires `pnpm install` first)
-- `pnpm install` — install all workspace dependencies (run once after cloning)
-- `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec (run after editing `lib/api-spec/openapi.yaml`)
+- **Frontend** (port 18837): workflow `artifacts/donghua-stream: web`
+- **API server** (port 8080): workflow `artifacts/api-server: API Server`
+- `pnpm install` — install all workspace dependencies
 - `pnpm run typecheck` — full typecheck across all packages
 - `pnpm run build` — typecheck + build all packages
-- `pnpm --filter @workspace/db run push` — push DB schema changes to Postgres (dev only)
-- Required env: `DATABASE_URL` — Postgres connection string (needed by the API server and DB package)
-
-## API Endpoints
-
-All routes are prefixed `/api/donghua/`:
-
-| Endpoint | Description |
-|---|---|
-| `GET /ongoing?page=N` | Currently airing donghua |
-| `GET /completed?page=N` | Completed donghua |
-| `GET /upcoming` | Upcoming donghua |
-| `GET /drop?page=N` | Dropped donghua |
-| `GET /search?q=...` | Search by title |
-| `GET /detail?slug=...` | Full series detail + episode list |
-| `GET /stream?slug=...` | Primary stream URL + all servers |
-| `GET /servers?slug=...` | All video servers for an episode (includes Vidio if found) |
-| `GET /download?slug=...` | Download links grouped by quality |
-| `GET /schedule` | Weekly airing schedule |
-| `GET /trending` | Featured/trending series |
-| `GET /popular` | Latest releases from homepage |
+- `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
 
 ## Stack
 
-- pnpm workspaces, Node.js 24, TypeScript 5.9
-- API: Express 5 with stale-while-revalidate in-memory cache
-- DB: PostgreSQL + Drizzle ORM
-- Validation: Zod (`zod/v4`), `drizzle-zod`
-- API codegen: Orval (from `lib/api-spec/openapi.yaml`)
-- Frontend: React 19 + Vite + Tailwind CSS 4
-- Build: esbuild
+- pnpm workspaces, Node.js 20, TypeScript 5.9
+- Frontend: React 19 + Vite 7, Tailwind CSS v4, TanStack Query, Wouter
+- API: Express 5
+- Scraping: Axios + Cheerio (scrapes anichin.moe)
+- API codegen: Orval (from OpenAPI spec in lib/api-spec/openapi.yaml)
+- Build: esbuild (ESM bundle for API server)
 
 ## Where things live
 
-- `artifacts/api-server/src/routes/donghua/scraper.ts` — all scraping logic (Axly API + anichin.moe direct)
-- `artifacts/api-server/src/routes/donghua/index.ts` — Express routes + SWR cache layer
-- `lib/api-spec/openapi.yaml` — OpenAPI spec (source of truth for types)
-- `lib/db/` — Drizzle schema and migrations
-- `artifacts/donghua-stream/` — React frontend
+- `artifacts/donghua-stream/` — React frontend (pages, components, CSS)
+- `artifacts/api-server/src/routes/donghua/` — web scraper + route handlers
+- `artifacts/api-server/src/routes/donghua/scraper.ts` — all scraping logic (Cheerio)
+- `lib/api-spec/openapi.yaml` — source of truth for API contract
+- `lib/api-client-react/src/generated/` — generated React Query hooks (do not edit)
+- `lib/api-zod/src/generated/` — generated Zod schemas (do not edit)
 
-## Architecture decisions
+## Architecture
 
-- **Upstream proxy pattern**: The API proxies `axlyapi.qzz.io` rather than scraping anichin.moe directly for most endpoints. Direct scraping is only used for the homepage popular list and Vidio server detection.
-- **Stale-while-revalidate cache**: All routes use an in-memory SWR cache with configurable TTLs. Stream/servers/download cached for 1 hour; lists for 10 min; schedule for 2 hours.
-- **Vidio server enrichment**: `/servers` attempts to scrape the episode page for a Vidio embed URL (with a 5s timeout) if the upstream API doesn't include one.
-- **Image proxy**: All thumbnail/cover URLs are rewritten to go through `/api/image-proxy` to bypass hotlink protection.
-- **OpenAPI-driven codegen**: Editing `openapi.yaml` and running codegen regenerates all TypeScript types and React hooks automatically.
+- No database — all data is scraped on-demand from anichin.moe with in-memory TTL cache
+- Cache TTL varies by endpoint: 3 min (ongoing), 5 min (completed/trending), 10 min (upcoming), 1 hour (streams)
+- OpenAPI-first contract: spec → codegen → typed hooks on frontend
+- Cinematic dark theme only
+- API server is backend at port 8080; frontend dev server proxies `/api` to it
+
+## Pages
+
+- Home: hero banner + ongoing/completed/upcoming sections
+- Ongoing/Completed: paginated grids with Load More
+- Schedule: weekly airing schedule grouped by day
+- Search: live search by keyword
+- Detail: series info + full episode list
+- Watch: embedded video player (iframe) + episode sidebar
 
 ## Gotchas
 
-- After editing `lib/api-spec/openapi.yaml`, always run `pnpm --filter @workspace/api-spec run codegen` to regenerate types.
-- The API server workflow command is `PORT=8080 pnpm --filter @workspace/api-server run dev` — it builds before starting.
-- `DATABASE_URL` must be set for the API server to start without errors.
+- After every OpenAPI spec change, always run `pnpm --filter @workspace/api-spec run codegen`
+- The scraper depends on anichin.moe HTML structure — if that site changes layout, selectors in `scraper.ts` need updating
+- `@workspace/db` is NOT used by this project (no DATABASE_URL needed)
 
 ## User preferences
 
 _Populate as you build — explicit user instructions worth remembering across sessions._
-
-## Setup notes
-
-- Imported project required `pnpm install` (node_modules were missing, causing both workflows to fail: `ERR_MODULE_NOT_FOUND: esbuild` on the API server, `vite: not found` on the frontend). After installing and restarting both workflows, everything — including the video player's server selector and download links — works correctly against live upstream data.
-- `DATABASE_URL` is only consumed by `lib/db`; the current donghua routes don't touch the DB, so the API server starts and serves fine without it in dev.
