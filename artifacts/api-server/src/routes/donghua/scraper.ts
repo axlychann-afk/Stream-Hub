@@ -14,6 +14,23 @@ export function isServerBlocked(name: string, url: string): boolean {
   return BLOCKED_SERVERS.some((b) => haystack.includes(b));
 }
 
+/**
+ * Replace wrapped embed URLs with their direct equivalent.
+ * e.g. anichin-player.web.id/index.php?ok=ID → //ok.ru/videoembed/ID
+ * This bypasses domain-whitelist checks inside the wrapper player.
+ */
+export function unwrapEmbedUrl(url: string): string {
+  try {
+    const u = new URL(url.startsWith("//") ? `https:${url}` : url);
+    // anichin-player.web.id/?ok=VIDEO_ID → direct OK.ru embed
+    if (u.hostname === "anichin-player.web.id") {
+      const okId = u.searchParams.get("ok");
+      if (okId) return `//ok.ru/videoembed/${okId}`;
+    }
+  } catch { /* ignore */ }
+  return url;
+}
+
 const http = axios.create({
   baseURL: AXLY_BASE,
   timeout: REQUEST_TIMEOUT,
@@ -276,7 +293,7 @@ async function scrapeAnimasuServersForSlug(slug: string): Promise<VideoServer[]>
     const servers: VideoServer[] = [];
     for (const s of data.result.dropdown_servers) {
       const name = typeof s.label === "string" ? s.label.trim() : "";
-      const embed_url = typeof s.embed_url === "string" ? s.embed_url.trim() : "";
+      const embed_url = unwrapEmbedUrl(typeof s.embed_url === "string" ? s.embed_url.trim() : "");
       if (name && embed_url && !isServerBlocked(name, embed_url)) {
         servers.push({ name: `[Animasu] ${name}`, embed_url });
       }
@@ -595,7 +612,7 @@ export async function scrapeServers(slug: string): Promise<ServersInfo> {
       titleSlug = str(r.slug, slug);
       for (const s of r.servers ?? []) {
         const name = typeof s.label === "string" ? s.label.trim() : "";
-        const embed_url = typeof s.embed_url === "string" ? s.embed_url.trim() : "";
+        const embed_url = unwrapEmbedUrl(typeof s.embed_url === "string" ? s.embed_url.trim() : "");
         if (name && embed_url && !isServerBlocked(name, embed_url)) anichinServers.push({ name, embed_url });
       }
     }
@@ -681,7 +698,7 @@ export async function scrapeStream(slug: string): Promise<StreamInfo> {
   if (serversRes.status === "fulfilled" && serversRes.value.data?.status && serversRes.value.data?.result?.servers) {
     for (const s of serversRes.value.data.result.servers) {
       const name = typeof s.label === "string" ? s.label.trim() : "";
-      const embed_url = typeof s.embed_url === "string" ? s.embed_url.trim() : "";
+      const embed_url = unwrapEmbedUrl(typeof s.embed_url === "string" ? s.embed_url.trim() : "");
       if (name && embed_url && !isServerBlocked(name, embed_url)) anichinServers.push({ name, embed_url });
     }
     // Use title from /servers if /stream failed

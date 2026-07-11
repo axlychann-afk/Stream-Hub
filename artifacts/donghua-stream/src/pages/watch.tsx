@@ -76,6 +76,19 @@ function isServerUnreliable(name: string, url: string) {
   return h.includes("ok.ru") || h.includes("okru");
 }
 
+// Replace wrapper embed URLs with direct equivalents
+// e.g. anichin-player.web.id/index.php?ok=ID → //ok.ru/videoembed/ID
+function unwrapEmbedUrl(url: string): string {
+  try {
+    const u = new URL(url.startsWith("//") ? `https:${url}` : url);
+    if (u.hostname === "anichin-player.web.id") {
+      const okId = u.searchParams.get("ok");
+      if (okId) return `//ok.ru/videoembed/${okId}`;
+    }
+  } catch { /* ignore */ }
+  return url;
+}
+
 // Convert anichin slug → Animasu slug format
 // e.g. "apotheosis-episode-01-subtitle-indonesia" → "nonton-apotheosis-episode-1"
 function toAnimasuSlug(slug: string): string {
@@ -195,11 +208,13 @@ export default function Watch() {
 
   // Build server list: anichin servers (via backend/direct Axly) + Animasu (direct browser fetch)
   // Deduped by embed_url, blocked servers filtered out
-  const primaryServers = (serversData?.result?.servers ?? []).filter(
-    (s) => !isServerBlocked(s.label ?? s.name ?? "", s.embed_url ?? "")
-  );
+  const primaryServers = (serversData?.result?.servers ?? [])
+    .map((s) => ({ ...s, embed_url: unwrapEmbedUrl(s.embed_url ?? "") }))
+    .filter((s) => !isServerBlocked(s.label ?? s.name ?? "", s.embed_url));
   const seenUrls = new Set(primaryServers.map((s) => s.embed_url ?? ""));
-  const extraServers = animasuServers.filter((s) => s.embed_url && !seenUrls.has(s.embed_url));
+  const extraServers = animasuServers
+    .map((s) => ({ ...s, embed_url: unwrapEmbedUrl(s.embed_url ?? "") }))
+    .filter((s) => s.embed_url && !seenUrls.has(s.embed_url));
   const servers: AxlyServer[] = [...primaryServers, ...extraServers];
   const activeEmbedUrl = (servers[selectedServer] ? extractEmbedUrl(servers[selectedServer]) : "") || stream?.embed_url || "";
 
