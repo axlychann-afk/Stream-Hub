@@ -2,11 +2,28 @@ import axios from "axios";
 import * as cheerio from "cheerio";
 
 const AXLY_BASE = "https://axlyapi.qzz.io/donghua";
+const AXLY_ANIMASU_BASE = "https://axlyapi.qzz.io/anime/animasu";
+const ANIMASU_EPISODE_BASE = "https://v1.animasu.work";
 const ANICHIN_BASE = "https://anichin.moe";
 const REQUEST_TIMEOUT = 20000;
 
+// Servers blocked from appearing in the player (set X-Frame-Options / CSP that prevent embedding)
+const BLOCKED_SERVERS = ["dailymotion", "okru", "ok.ru"];
+export function isServerBlocked(name: string, url: string): boolean {
+  const haystack = `${name} ${url}`.toLowerCase();
+  return BLOCKED_SERVERS.some((b) => haystack.includes(b));
+}
+
 const http = axios.create({
   baseURL: AXLY_BASE,
+  timeout: REQUEST_TIMEOUT,
+  headers: {
+    "User-Agent": "DonghuaStream/1.0",
+  },
+});
+
+const httpAnimasu = axios.create({
+  baseURL: AXLY_ANIMASU_BASE,
   timeout: REQUEST_TIMEOUT,
   headers: {
     "User-Agent": "DonghuaStream/1.0",
@@ -199,6 +216,20 @@ interface AxlyDownloadResponse {
   };
 }
 
+interface AxlyAnimasuResponse {
+  status: boolean;
+  error?: string;
+  result?: {
+    title?: unknown;
+    dropdown_servers?: Array<{
+      label?: unknown;
+      platform?: unknown;
+      embed_url?: unknown;
+      decoded_html?: unknown;
+    }>;
+  };
+}
+
 interface AxlyScheduleResponse {
   status: boolean;
   result?: Record<string, unknown[]>;
@@ -215,6 +246,40 @@ interface AxlyEpisode {
 // ──────────────────────────────────────────────
 // Helpers
 // ──────────────────────────────────────────────
+
+/**
+ * Fetch servers from Animasu for the same episode slug.
+ * Animasu uses the same slug format as anichin.moe.
+ * Returns an empty array on any failure so it never breaks the main flow.
+ */
+async function scrapeAnimasuServersForSlug(slug: string): Promise<VideoServer[]> {
+  try {
+    const animasuUrl = `${ANIMASU_EPISODE_BASE}/${slug}/`;
+    const { data } = await httpAnimasu.get<AxlyAnimasuResponse>(
+      `/stream?url=${encodeURIComponent(animasuUrl)}`
+    );
+    if (!data?.status || !data?.result?.dropdown_servers) return [];
+
+    const servers: VideoServer[] = [];
+    for (const s of data.result.dropdown_servers) {
+      const name = typeof s.label === "string" ? s.label.trim() : "";
+      const embed_url = typeof s.embed_url === "string" ? s.embed_url.trim() : "";
+      if (name && embed_url && !isServerBlocked(name, embed_url)) {
+        servers.push({ name: `[Animasu] ${name}`, embed_url });
+      }
+    }
+    return servers;
+  } catch {
+    return [];
+  }
+}
+
+/** Merge two server lists, deduplicating by embed_url */
+function mergeServers(primary: VideoServer[], secondary: VideoServer[]): VideoServer[] {
+  const seen = new Set(primary.map((s) => s.embed_url));
+  const extras = secondary.filter((s) => !seen.has(s.embed_url));
+  return [...primary, ...extras];
+}
 
 /** Remove duplicated title text like "Foo BarFoo Bar" → "Foo Bar" */
 function dedupeTitle(raw: unknown): string {
@@ -499,28 +564,27 @@ async function scrapeVidioFromPage(slug: string): Promise<string | null> {
 }
 
 export async function scrapeServers(slug: string): Promise<ServersInfo> {
-  const { data } = await http.get<AxlyServersResponse>(
-    `/servers?slug=${encodeURIComponent(slug)}`
-  );
+  // Fetch anichin servers + Animasu servers + Vidio scrape in parallel
+  const [anichinRes, animasuServers] = await Promise.all([
+    http.get<AxlyServersResponse>(`/servers?slug=${encodeURIComponent(slug)}`),
+    scrapeAnimasuServersForSlug(slug),
+  ]);
 
+  const data = anichinRes.data;
   if (!data?.status || !data?.result) {
     throw new Error(data?.error ?? `Servers not found for slug: ${slug}`);
   }
 
   const r = data.result;
-  const servers: VideoServer[] = [];
-
-  const BLOCKED_SERVERS = ["dailymotion", "okru", "ok.ru"];
-  const isBlocked = (name: string, url: string) => {
-    const haystack = `${name} ${url}`.toLowerCase();
-    return BLOCKED_SERVERS.some((b) => haystack.includes(b));
-  };
+  const anichinServers: VideoServer[] = [];
 
   for (const s of r.servers ?? []) {
     const name = typeof s.label === "string" ? s.label.trim() : "";
     const embed_url = typeof s.embed_url === "string" ? s.embed_url.trim() : "";
-    if (name && embed_url && !isBlocked(name, embed_url)) servers.push({ name, embed_url });
+    if (name && embed_url && !isServerBlocked(name, embed_url)) anichinServers.push({ name, embed_url });
   }
+
+  let servers = mergeServers(anichinServers, animasuServers);
 
   // Try to add Vidio from the episode page if not already present
   const hasVidio = servers.some((s) => s.name.toLowerCase().includes("vidio") || s.embed_url.includes("vidio.com"));
@@ -569,10 +633,11 @@ export async function scrapeDownload(slug: string): Promise<DownloadInfo> {
 }
 
 export async function scrapeStream(slug: string): Promise<StreamInfo> {
-  // Call /stream (basic info) and /servers (all mirror options) in parallel
-  const [streamRes, serversRes] = await Promise.allSettled([
+  // Call anichin /stream, anichin /servers, and Animasu servers all in parallel
+  const [streamRes, serversRes, animasuServers] = await Promise.allSettled([
     http.get<AxlyStreamResponse>(`/stream?slug=${encodeURIComponent(slug)}`),
     http.get<AxlyServersResponse>(`/servers?slug=${encodeURIComponent(slug)}`),
+    scrapeAnimasuServersForSlug(slug),
   ]);
 
   // Basic metadata from /stream
@@ -589,25 +654,23 @@ export async function scrapeStream(slug: string): Promise<StreamInfo> {
     watch_url = str(r.watch_url) || watch_url;
   }
 
-  // Build servers list from /servers endpoint
-  const BLOCKED_SERVERS_STREAM = ["dailymotion", "okru", "ok.ru"];
-  const isBlockedStream = (name: string, url: string) => {
-    const haystack = `${name} ${url}`.toLowerCase();
-    return BLOCKED_SERVERS_STREAM.some((b) => haystack.includes(b));
-  };
-
-  const servers: VideoServer[] = [];
+  // Build anichin servers list
+  const anichinServers: VideoServer[] = [];
   if (serversRes.status === "fulfilled" && serversRes.value.data?.status && serversRes.value.data?.result?.servers) {
     for (const s of serversRes.value.data.result.servers) {
       const name = typeof s.label === "string" ? s.label.trim() : "";
       const embed_url = typeof s.embed_url === "string" ? s.embed_url.trim() : "";
-      if (name && embed_url && !isBlockedStream(name, embed_url)) servers.push({ name, embed_url });
+      if (name && embed_url && !isServerBlocked(name, embed_url)) anichinServers.push({ name, embed_url });
     }
     // Use title from /servers if /stream failed
     if (title === "Donghua Episode" && serversRes.value.data.result.title) {
       title = str(serversRes.value.data.result.title, "Donghua Episode");
     }
   }
+
+  // Merge anichin + Animasu servers (deduplicated by embed_url)
+  const extras = animasuServers.status === "fulfilled" ? animasuServers.value : [];
+  const servers = mergeServers(anichinServers, extras);
 
   // Primary embed_url: first server, fallback to /stream embed_url
   const streamEmbed = streamRes.status === "fulfilled"
