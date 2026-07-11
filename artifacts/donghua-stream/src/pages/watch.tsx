@@ -238,12 +238,6 @@ export default function Watch() {
 
           {/* Player Column */}
           <div className="flex-1 w-full min-w-0 relative group">
-            {/* Ad — above video: leaderboard on desktop, mobile banner on small screens */}
-            <div className="flex justify-center items-center bg-black py-2 border-b border-border/50">
-              <AdBanner adKey="9e2a6b19bc439a5d10e974fac3a49d01" width={728} height={90} className="hidden md:block" />
-              <AdBanner adKey="5da4ef5622618dd06d784f0cab3ad0fa" width={320} height={50} className="md:hidden" />
-            </div>
-
             {/* Video Player */}
             <div className="aspect-video w-full bg-zinc-950 relative flex items-center justify-center overflow-hidden lg:rounded-b-none lg:rounded-tl-lg">
               {streamLoading && !activeEmbedUrl ? (
@@ -273,13 +267,6 @@ export default function Watch() {
                   allowFullScreen
                 />
               )}
-            </div>
-
-            {/* Ad — below video: small rectangle always, larger units join in on wider screens */}
-            <div className="flex flex-wrap justify-center items-center gap-3 bg-black py-3 border-b border-border/50">
-              <AdBanner adKey="8550b721f8992c34a1b4334a029889ce" width={160} height={300} />
-              <AdBanner adKey="54eecf233aa963e10a7f564f1b75648f" width={300} height={250} className="hidden sm:block" />
-              <AdBanner adKey="4b070b67a7290768f9985c8873046c56" width={160} height={600} className="hidden lg:block" />
             </div>
 
             {/* Server Selector — right below the video */}
@@ -514,6 +501,13 @@ export default function Watch() {
                   );
                 })
               )}
+            </div>
+
+            {/* Ad — fills the empty space below the playlist */}
+            <div className="shrink-0 flex flex-col items-center justify-center gap-3 py-4 border-t border-border bg-muted/10">
+              <AdBanner adKey="8550b721f8992c34a1b4334a029889ce" width={160} height={300} />
+              <AdBanner adKey="54eecf233aa963e10a7f564f1b75648f" width={300} height={250} className="hidden xl:block" />
+              <AdBanner adKey="4b070b67a7290768f9985c8873046c56" width={160} height={600} className="hidden xl:block" />
             </div>
           </div>
         </div>
