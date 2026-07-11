@@ -248,13 +248,26 @@ interface AxlyEpisode {
 // ──────────────────────────────────────────────
 
 /**
- * Fetch servers from Animasu for the same episode slug.
- * Animasu uses the same slug format as anichin.moe.
+ * Convert an anichin episode slug to Animasu's URL format.
+ * anichin: "apotheosis-episode-01-subtitle-indonesia"
+ * animasu: "nonton-apotheosis-episode-1"
+ */
+function toAnimasuSlug(slug: string): string {
+  if (slug.startsWith("nonton-")) return slug;
+  const m = slug.match(/^(.+?)-episode-0*(\d+)(?:-subtitle.*)?$/i);
+  if (m) return `nonton-${m[1]}-episode-${parseInt(m[2], 10)}`;
+  return `nonton-${slug}`;
+}
+
+/**
+ * Fetch servers from Animasu for an episode slug.
+ * Converts the anichin slug to Animasu format automatically.
  * Returns an empty array on any failure so it never breaks the main flow.
  */
 async function scrapeAnimasuServersForSlug(slug: string): Promise<VideoServer[]> {
   try {
-    const animasuUrl = `${ANIMASU_EPISODE_BASE}/${slug}/`;
+    const animasuSlug = toAnimasuSlug(slug);
+    const animasuUrl = `${ANIMASU_EPISODE_BASE}/${animasuSlug}/`;
     const { data } = await httpAnimasu.get<AxlyAnimasuResponse>(
       `/stream?url=${encodeURIComponent(animasuUrl)}`
     );
@@ -564,27 +577,36 @@ async function scrapeVidioFromPage(slug: string): Promise<string | null> {
 }
 
 export async function scrapeServers(slug: string): Promise<ServersInfo> {
-  // Fetch anichin servers + Animasu servers + Vidio scrape in parallel
-  const [anichinRes, animasuServers] = await Promise.all([
-    http.get<AxlyServersResponse>(`/servers?slug=${encodeURIComponent(slug)}`),
+  // Fetch anichin servers + Animasu servers in parallel; neither failure kills the other
+  const [anichinSettled, animasuServers] = await Promise.all([
+    Promise.allSettled([http.get<AxlyServersResponse>(`/servers?slug=${encodeURIComponent(slug)}`)]).then((r) => r[0]),
     scrapeAnimasuServersForSlug(slug),
   ]);
 
-  const data = anichinRes.data;
-  if (!data?.status || !data?.result) {
-    throw new Error(data?.error ?? `Servers not found for slug: ${slug}`);
-  }
-
-  const r = data.result;
   const anichinServers: VideoServer[] = [];
+  let title = "";
+  let titleSlug = slug;
 
-  for (const s of r.servers ?? []) {
-    const name = typeof s.label === "string" ? s.label.trim() : "";
-    const embed_url = typeof s.embed_url === "string" ? s.embed_url.trim() : "";
-    if (name && embed_url && !isServerBlocked(name, embed_url)) anichinServers.push({ name, embed_url });
+  if (anichinSettled.status === "fulfilled") {
+    const data = anichinSettled.value.data;
+    if (data?.status && data?.result) {
+      const r = data.result;
+      title = str(r.title);
+      titleSlug = str(r.slug, slug);
+      for (const s of r.servers ?? []) {
+        const name = typeof s.label === "string" ? s.label.trim() : "";
+        const embed_url = typeof s.embed_url === "string" ? s.embed_url.trim() : "";
+        if (name && embed_url && !isServerBlocked(name, embed_url)) anichinServers.push({ name, embed_url });
+      }
+    }
   }
 
   let servers = mergeServers(anichinServers, animasuServers);
+
+  // If both sources returned nothing, throw so the route returns a proper error
+  if (servers.length === 0 && anichinSettled.status !== "fulfilled") {
+    throw new Error(`Servers not found for slug: ${slug}`);
+  }
 
   // Try to add Vidio from the episode page if not already present
   const hasVidio = servers.some((s) => s.name.toLowerCase().includes("vidio") || s.embed_url.includes("vidio.com"));
@@ -594,8 +616,8 @@ export async function scrapeServers(slug: string): Promise<ServersInfo> {
   }
 
   return {
-    title: str(r.title),
-    slug: str(r.slug, slug),
+    title,
+    slug: titleSlug,
     total_servers: servers.length,
     servers,
   };
