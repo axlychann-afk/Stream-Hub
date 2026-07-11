@@ -145,8 +145,12 @@ export default function Watch() {
   const currentEpInfo = currentIndex !== -1 ? episodes[currentIndex] : null;
   const stream = streamData?.result;
 
-  // Build the server list from the direct Axly fetch result
-  const servers: AxlyServer[] = serversData?.result?.servers ?? [];
+  // Build the server list from the direct Axly fetch result, excluding blocked embeds
+  const BLOCKED = ["dailymotion", "okru", "ok.ru"];
+  const servers: AxlyServer[] = (serversData?.result?.servers ?? []).filter((s) => {
+    const haystack = `${s.label ?? ""} ${s.name ?? ""} ${s.embed_url ?? ""}`.toLowerCase();
+    return !BLOCKED.some((b) => haystack.includes(b));
+  });
   const activeEmbedUrl = (servers[selectedServer] ? extractEmbedUrl(servers[selectedServer]) : "") || stream?.embed_url || "";
 
   const downloads = (downloadData?.result?.downloads ?? []).filter(
