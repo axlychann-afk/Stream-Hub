@@ -6,6 +6,13 @@ const DM_API = `https://api.dailymotion.com/user/${DM_CHANNEL}/videos`;
 const REQUEST_TIMEOUT = 15000;
 const CACHE_TTL_MS = 10 * 60 * 1000;
 const MAX_PAGES = 3;
+// On a cold cache, fetching all MAX_PAGES sequentially can take up to
+// MAX_PAGES * REQUEST_TIMEOUT. getDailymotionServer is raced against this
+// budget so a slow/cold lookup never holds up the anichin/Animasu servers
+// response — the underlying fetch keeps running in the background and
+// populates the cache for the next request regardless of whether this call
+// waited for it.
+const LOOKUP_BUDGET_MS = 8000;
 
 interface DmVideo {
   id: string;
@@ -156,7 +163,15 @@ export async function getDailymotionServer(episodeSlug: string): Promise<VideoSe
   if (!codes || codes.length === 0) return null;
 
   try {
-    const entries = await getEntries();
+    // Race against LOOKUP_BUDGET_MS instead of awaiting getEntries() directly:
+    // getEntries() keeps running (and will populate the cache) even if we give
+    // up waiting on it here, so a cold-cache lookup costs at most this budget
+    // on the caller instead of the full multi-page fetch time.
+    const entries = await Promise.race([
+      getEntries(),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), LOOKUP_BUDGET_MS)),
+    ]);
+    if (!entries) return null;
     const matches = entries.filter(
       (e) => codes.includes(e.code) && parsed.episodeNumber >= e.epStart && parsed.episodeNumber <= e.epEnd
     );

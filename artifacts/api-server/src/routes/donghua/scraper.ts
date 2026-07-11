@@ -40,9 +40,16 @@ const http = axios.create({
   },
 });
 
+// The Animasu upstream (v1.animasu.work, via axly) is frequently slow or
+// erroring (observed: ~30s before a 500) — bounding its timeout well below
+// the shared REQUEST_TIMEOUT keeps a flaky Animasu response from gating the
+// whole /servers or /stream response when anichin and Dailymotion have
+// already resolved.
+const ANIMASU_REQUEST_TIMEOUT = 8000;
+
 const httpAnimasu = axios.create({
   baseURL: AXLY_ANIMASU_BASE,
-  timeout: REQUEST_TIMEOUT,
+  timeout: ANIMASU_REQUEST_TIMEOUT,
   headers: {
     "User-Agent": "DonghuaStream/1.0",
   },
@@ -595,10 +602,19 @@ async function scrapeVidioFromPage(slug: string): Promise<string | null> {
 }
 
 export async function scrapeServers(slug: string): Promise<ServersInfo> {
-  // Fetch anichin servers + Animasu servers in parallel; neither failure kills the other
-  const [anichinSettled, animasuServers] = await Promise.all([
+  // Race all three sources at once (anichin, Animasu, Dailymotion) instead of
+  // fetching Dailymotion sequentially afterwards. Sequential fetching used to
+  // add the full Dailymotion channel-lookup latency (up to ~45s on a cold
+  // cache across MAX_PAGES) on top of the anichin+Animasu latency, which
+  // could make the whole servers response time out or arrive so late the
+  // frontend request itself had already errored — from the user's point of
+  // view "the server picker doesn't show up at all". Racing them means
+  // whichever source(s) resolve within the bounded window make it into the
+  // response; a slow/cold Dailymotion lookup no longer blocks the rest.
+  const [anichinSettled, animasuServers, dailymotionServer] = await Promise.all([
     Promise.allSettled([http.get<AxlyServersResponse>(`/servers?slug=${encodeURIComponent(slug)}`)]).then((r) => r[0]),
     scrapeAnimasuServersForSlug(slug),
+    getDailymotionServer(slug),
   ]);
 
   const anichinServers: VideoServer[] = [];
@@ -633,8 +649,11 @@ export async function scrapeServers(slug: string): Promise<ServersInfo> {
     if (vidioUrl) servers.push({ name: "Vidio", embed_url: vidioUrl });
   }
 
-  // Best-effort extra server from the dongchindopro Dailymotion channel (opt-in per series, see dailymotion.ts)
-  const dailymotionServer = await getDailymotionServer(slug);
+  // Extra server from the dongchindopro Dailymotion channel (opt-in per series,
+  // see dailymotion.ts) — fetched in parallel above, appended here if it resolved.
+  // If anichin/Animasu came back empty (e.g. a brand-new episode not indexed by
+  // Axly yet) but Dailymotion already has it, this ends up being the only server
+  // offered — which is the desired "whichever source has it first, wins" behavior.
   if (dailymotionServer) servers.push(dailymotionServer);
 
   return {
@@ -677,11 +696,14 @@ export async function scrapeDownload(slug: string): Promise<DownloadInfo> {
 }
 
 export async function scrapeStream(slug: string): Promise<StreamInfo> {
-  // Call anichin /stream, anichin /servers, and Animasu servers all in parallel
-  const [streamRes, serversRes, animasuServers] = await Promise.allSettled([
+  // Call anichin /stream, anichin /servers, Animasu, and Dailymotion all in
+  // parallel (see scrapeServers above for why Dailymotion must not be
+  // fetched sequentially after the others).
+  const [streamRes, serversRes, animasuServers, dailymotionRes] = await Promise.allSettled([
     http.get<AxlyStreamResponse>(`/stream?slug=${encodeURIComponent(slug)}`),
     http.get<AxlyServersResponse>(`/servers?slug=${encodeURIComponent(slug)}`),
     scrapeAnimasuServersForSlug(slug),
+    getDailymotionServer(slug),
   ]);
 
   // Basic metadata from /stream
@@ -716,8 +738,9 @@ export async function scrapeStream(slug: string): Promise<StreamInfo> {
   const extras = animasuServers.status === "fulfilled" ? animasuServers.value : [];
   const servers = mergeServers(anichinServers, extras);
 
-  // Best-effort extra server from the dongchindopro Dailymotion channel (opt-in per series, see dailymotion.ts)
-  const dailymotionServer = await getDailymotionServer(slug);
+  // Extra server from the dongchindopro Dailymotion channel (opt-in per series,
+  // see dailymotion.ts) — fetched in parallel above, appended here if it resolved.
+  const dailymotionServer = dailymotionRes.status === "fulfilled" ? dailymotionRes.value : null;
   if (dailymotionServer) servers.push(dailymotionServer);
 
   // Primary embed_url: first server, fallback to /stream embed_url
