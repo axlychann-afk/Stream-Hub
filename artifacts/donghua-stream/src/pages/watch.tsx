@@ -512,6 +512,12 @@ export default function Watch() {
               <AdBanner adKey="4b070b67a7290768f9985c8873046c56" width={160} height={600} className="hidden xl:block" />
             </div>
           </div>
+
+          {/* Ad — mobile/tablet only. Placed after the whole player+playlist stack
+              so it never squeezes into the playlist's fixed-height box. */}
+          <div className="flex lg:hidden justify-center py-4 border-t border-border bg-muted/10">
+            <AdBanner adKey="54eecf233aa963e10a7f564f1b75648f" width={300} height={250} />
+          </div>
         </div>
       </div>
 
