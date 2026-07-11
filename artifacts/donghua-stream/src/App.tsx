@@ -2,6 +2,7 @@ import { lazy, Suspense } from "react";
 import { QueryClient, QueryClientProvider, useIsFetching } from "@tanstack/react-query";
 import { HelmetProvider } from "react-helmet-async";
 import { Route, Switch, Router as WouterRouter } from "wouter";
+import { Analytics } from "@vercel/analytics/react";
 
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
@@ -72,6 +73,7 @@ function App() {
             </main>
             <Footer />
           </div>
+          <Analytics />
         </WouterRouter>
       </HelmetProvider>
     </QueryClientProvider>
