@@ -22,6 +22,7 @@ import {
   ExternalLink,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { AdBanner } from "@/components/AdBanner";
 import { useEffect, useRef, useState } from "react";
 
 // Axly server shape returned by /donghua/servers
@@ -449,6 +450,8 @@ export default function Watch() {
                 {episodes.length} Eps
               </span>
             </div>
+
+            <AdBanner />
 
             <div className="flex-1 overflow-y-auto hide-scrollbar p-2 space-y-1 bg-muted/10 min-h-0">
               {!series ? (
