@@ -36,63 +36,32 @@ function normalize(s: string): string {
 }
 
 /**
- * Manually maintained aliases: our site's series slug -> the normalized show
- * code that the `dongchindopro` Dailymotion channel uses in its upload titles.
- *
- * Matching is opt-in and exact on purpose: the channel's titles use ad-hoc
- * abbreviations (e.g. "BTTH", "ARMJI") that can't be derived automatically
- * from our slugs, and a wrong guess would show the wrong show's video. Add a
- * new line here only after confirming (via the Dailymotion API) that the
- * abbreviation on the channel really corresponds to that series slug.
+ * Stop words excluded from token-based slug matching.
+ * These are common English words that appear in both slugs and channel titles
+ * and would create false positives if included.
+ */
+const STOP_WORDS = new Set([
+  "sub", "the", "and", "but", "for", "nor", "not", "yet", "its", "indo",
+  "end", "eps", "season", "special",
+]);
+
+/**
+ * Manual overrides for series whose site slugs are in a completely different
+ * language or use abbreviations that can't be derived from the slug words.
+ * Keep this list minimal — the token-based auto-matching handles most cases.
  */
 const SERIES_ALIASES: Record<string, string[]> = {
-  // Site's actual slug for "BTTH Season 5" is this odd machine-translated
-  // string, not "btth-season-5" (that key never matched a real episode slug
-  // and silently gave this show zero Dailymotion coverage). Uploader labels
-  // this show "BTTH", "BTTH 5", or its Chinese pinyin title "Doupo Cangqiong".
+  // Site slug is the Indonesian machine-translated title; channel uses "BTTH" / "BTTH5".
   "oyen-pertempuran-akhir-sekte-misty-cloud": ["btth", "btth5", "doupocangqiong5"],
-  "coiling-dragon": ["coilingdragon"],
-  "ever-night": ["evernight"],
-  "perfect-world": ["perfectworld"],
-  "azure-legacy": ["azurelegacy"],
-  // Channel uses several title formats for this show: "[MSBS] My Senior Brother Steady",
-  // "My Senior Brother Steady", "Senior Brother Steady", or the tag abbreviation "msbs".
-  "my-senior-brother-is-too-steady": ["msbs", "seniorbrothersteady", "myseniorbrothersteady", "msbsmyseniorbrothersteady"],
-  // "Way of Choices" is also known by its Chinese title "Ze Tian Ji" on the channel.
+  // Channel uses the typo "allone" as well as correct "alone" and "allalone".
+  "walking-the-way-all-alone": ["walkingthewayalone", "walkingthewayallone", "walkingthewayallalone"],
+  // "shrounding" is a persistent typo in older anichin episode slugs.
+  "shrounding-the-heavens": ["shroudingtheheavens", "sthshroudingtheheavens", "zhetian"],
+  "shrouding-the-heavens": ["shroudingtheheavens", "sthshroudingtheheavens", "zhetian"],
+  // Channel uses Chinese pinyin title "Ze Tian Ji" alongside "Way of Choices".
   "way-of-choices": ["wayofchoices", "zetianji"],
-  "renegade-immortal": ["renegadeimmortal"],
-  "swallowed-star": ["swallowedstar"],
-  // anichin's episode slugs are inconsistently spelled across this show's run —
-  // older episodes use the typo "shrounding", newer ones the correct
-  // "shrouding" — so both prefixes are mapped to the same code.
-  "shrounding-the-heavens": ["shroudingtheheavens"],
-  "shrouding-the-heavens": ["shroudingtheheavens"],
-  "tomb-of-fallen-gods-season-3": ["tomboffallengods3"],
-  // "The Great Ruler" is also uploaded as "Da Zhu Zai" (Chinese pinyin title).
-  "the-great-ruler": ["thegreatruler", "dazhuzai"],
-  // Channel occasionally spells this "allone" (typo) instead of "alone".
-  "walking-the-way-all-alone": ["walkingthewayalone", "walkingthewayallone"],
-  "in-search-of-gods": ["insearchofgods"],
-  "tales-of-herding-god": ["talesofherdinggods"],
-  "purple-river-season-2": ["purpleriver2"],
-  "slay-the-gods-season-2": ["slaythegods2"],
-  // Channel omits "of" in some uploads: "The Other Side Deep Space" vs "The Other Side of Deep Space".
-  "the-other-side-of-deep-space": ["theothersidedeepspace", "theothersideofdeepspace"],
-  "eclipse-of-illusion-special-the-miasma-war": ["eclipseofillusionspecialthemiasmawar"],
-  "100-000-years-of-refining-qi": ["100000refiningqi"],
-  // NOTE: no confirmed alias for ARMJI — the site's "remake" season only has 8
-  // episodes while the channel's "ARMJI" uploads are at ep 180+ (a different,
-  // longer-running adaptation we don't currently carry). Do not add a mapping
-  // here without finding an on-site season whose episode range actually
-  // overlaps the channel uploads.
-  "beyond-times-gaze": ["beyondtimesgaze"],
-  "dragons-triumph-in-the-celestial-realm": ["dragonstriumphcelestialrealm"],
-  // Channel omits "of" in many uploads: "The Gate Mystical Realm" vs "The Gate of Mystical Realm".
-  "the-gate-of-mystical-realm": ["thegateofmysticalrealm", "thegatemysticalrealm"],
-  // Channel uses both "Legend of Martial Immortal" and "Legend Martial Immortal" (drops "of").
-  "legend-of-martial-immortal": ["legendofmartialimmortal", "legendmartialimmortal"],
-  // Soul Land season 2 — channel titles it "Soul Land 2".
-  "soul-land-season-2": ["soullandseason2", "soulland2"],
+  // Channel uses Chinese pinyin title "Da Zhu Zai" alongside "The Great Ruler".
+  "the-great-ruler": ["thegreatruler", "dazhuzai", "thegreatruler2"],
 };
 
 /**
@@ -157,20 +126,71 @@ async function getEntries(): Promise<DmEntry[]> {
 }
 
 /**
- * Candidate dongchindopro show codes for a series slug: any manually
- * curated aliases (for series whose upload naming doesn't match their own
- * slug), plus the normalized slug itself as a fallback. Most of the
- * channel's uploads are titled with the show name squashed together (e.g.
- * "beyond-times-gaze" -> "beyondtimesgaze"), which is exactly
- * normalize(seriesSlug) — so this extends coverage to every series
- * automatically without a manual entry per show, while staying an
- * exact-match lookup (never fuzzy): a series the channel doesn't cover
- * simply matches nothing instead of risking a wrong-episode mismatch.
+ * Finds all channel codes that match a given series slug.
+ *
+ * Strategy (applied in order, results merged):
+ * 1. Manual SERIES_ALIASES override for non-derivable cases (e.g. Indonesian
+ *    slug → BTTH abbreviation, persistent typos).
+ * 2. Exact normalized slug match: normalize("coiling-dragon") = "coilingdragon"
+ *    which is exactly what the channel uses for most series.
+ * 3. Token-based fuzzy match: split the slug into meaningful words (≥3 chars,
+ *    not a stop word), then find every channel code that contains enough of
+ *    those words as substrings. This handles:
+ *      - dropped prepositions ("The Gate of Mystical Realm" → "thegatemysticalrealm")
+ *      - pluralisation differences ("tales-of-herding-god" → "talesofherdinggods")
+ *      - extra words in channel title ("Soul Land 2" for "soul-land-season-2")
+ *      - abbreviation prefixes ("[MSBS] My Senior Brother Steady" → "msbsmyseniorbrothersteady")
+ *    Threshold: ≥55% of slug tokens must appear in the channel code, minimum 2.
+ *
+ * This is exact-match per individual code (never substring on the wrong show),
+ * so a series the channel doesn't carry simply matches nothing instead of
+ * showing the wrong show's video.
  */
-function candidateCodes(seriesSlug: string): string[] {
-  const aliases = SERIES_ALIASES[seriesSlug] ?? [];
-  const fallback = normalize(seriesSlug);
-  return aliases.includes(fallback) ? aliases : [...aliases, fallback];
+function findCandidateCodes(seriesSlug: string, entries: DmEntry[]): string[] {
+  const manual = SERIES_ALIASES[seriesSlug] ?? [];
+  const exact = normalize(seriesSlug);
+
+  // Token-based: split slug by hyphens, keep meaningful words only
+  const words = seriesSlug.split("-").filter((w) => w.length >= 3 && !STOP_WORDS.has(w));
+
+  const allCodes = new Set(entries.map((e) => e.code));
+  const fuzzy: string[] = [];
+
+  if (words.length >= 2) {
+    const threshold = Math.max(2, Math.ceil(words.length * 0.55));
+    for (const code of allCodes) {
+      const hits = words.filter((w) => code.includes(w)).length;
+      if (hits >= threshold) fuzzy.push(code);
+    }
+  }
+
+  // Prefix matching: handles season-numbered uploads like "immortality1",
+  // "immortality3", "soulland2" when the slug is just "immortality" / "soul-land".
+  // Only match codes that are at most 2 characters longer than the exact slug
+  // (covers single or double-digit season suffixes without over-matching).
+  for (const code of allCodes) {
+    if (code.startsWith(exact) && code.length <= exact.length + 2) {
+      fuzzy.push(code);
+    }
+  }
+
+  // Season-slug pattern: "series-name-season-N" → also try normalizedBase + N.
+  // Handles slugs like "immortality-season-1" → "immortality1",
+  // "great-king-of-the-grave-season-2" → "greatkingofthegrave2", etc.
+  const seasonMatch = seriesSlug.match(/^(.+)-season-(\d+)$/i);
+  if (seasonMatch) {
+    const base = normalize(seasonMatch[1]);
+    const num = seasonMatch[2];
+    fuzzy.push(base + num);
+    // Also try any channel code that starts with base and ends with this number
+    for (const code of allCodes) {
+      if (code.startsWith(base) && code.length <= base.length + 2) {
+        fuzzy.push(code);
+      }
+    }
+  }
+
+  return [...new Set([...manual, exact, ...fuzzy])];
 }
 
 /**
@@ -183,8 +203,6 @@ function candidateCodes(seriesSlug: string): string[] {
 export async function listDailymotionEpisodes(
   seriesSlug: string
 ): Promise<Array<{ episodeNumber: number; videoId: string; createdTime: number }>> {
-  const codes = candidateCodes(seriesSlug);
-
   try {
     const entries = await Promise.race([
       getEntries(),
@@ -192,6 +210,7 @@ export async function listDailymotionEpisodes(
     ]);
     if (!entries) return [];
 
+    const codes = findCandidateCodes(seriesSlug, entries);
     const relevant = entries.filter((e) => codes.includes(e.code));
     const byEpisode = new Map<number, { videoId: string; createdTime: number }>();
     for (const e of relevant) {
@@ -222,14 +241,13 @@ export function parseEpisodeSlug(slug: string): { seriesSlug: string; episodeNum
 
 /**
  * Best-effort Dailymotion embed lookup for a given episode slug. Returns null
- * (never throws) whenever the series has no confirmed alias, the channel has
- * no matching upload yet, or the Dailymotion API is unreachable — so callers
- * can always treat this as an optional extra server.
+ * (never throws) whenever the channel has no matching upload yet, or the
+ * Dailymotion API is unreachable — so callers can always treat this as an
+ * optional extra server.
  */
 export async function getDailymotionServer(episodeSlug: string): Promise<VideoServer | null> {
   const parsed = parseEpisodeSlug(episodeSlug);
   if (!parsed) return null;
-  const codes = candidateCodes(parsed.seriesSlug);
 
   try {
     // Race against LOOKUP_BUDGET_MS instead of awaiting getEntries() directly:
@@ -241,6 +259,8 @@ export async function getDailymotionServer(episodeSlug: string): Promise<VideoSe
       new Promise<null>((resolve) => setTimeout(() => resolve(null), LOOKUP_BUDGET_MS)),
     ]);
     if (!entries) return null;
+
+    const codes = findCandidateCodes(parsed.seriesSlug, entries);
     const matches = entries.filter(
       (e) => codes.includes(e.code) && parsed.episodeNumber >= e.epStart && parsed.episodeNumber <= e.epEnd
     );
