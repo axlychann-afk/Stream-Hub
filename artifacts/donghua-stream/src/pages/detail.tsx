@@ -106,15 +106,19 @@ export default function Detail() {
   const item = data.result;
   const isOngoing = item.status?.toLowerCase().includes("ongoing");
   
-  // Episode slug extraction helper
-  const getEpisodeSlug = (url: string) => {
+  // Episode slug extraction helper. Prefer the API's own `slug` field — it's
+  // always populated, including for Dailymotion look-ahead episodes anichin
+  // hasn't listed yet, whose `url` is empty. Deriving from `url` made every
+  // such episode resolve to the same "" slug (duplicate keys + dead links).
+  const getEpisodeSlug = (ep: { url: string; slug?: string }) => {
+    if (ep.slug) return ep.slug;
     try {
-      const urlObj = new URL(url);
+      const urlObj = new URL(ep.url);
       return urlObj.pathname.split('/').filter(Boolean).pop() || '';
     } catch {
       // Fallback if not valid URL
-      const parts = url.split('/').filter(Boolean);
-      return parts[parts.length - 1] || url;
+      const parts = ep.url.split('/').filter(Boolean);
+      return parts[parts.length - 1] || ep.url;
     }
   };
 
@@ -123,8 +127,8 @@ export default function Detail() {
   const episodes = item.episodes ?? [];
   const firstEpisode = episodes.length > 0 ? episodes[0] : null;
   const latestEpisode = episodes.length > 0 ? episodes[episodes.length - 1] : null;
-  const firstEpisodeSlug = firstEpisode ? getEpisodeSlug(firstEpisode.url) : '';
-  const latestEpisodeSlug = latestEpisode ? getEpisodeSlug(latestEpisode.url) : '';
+  const firstEpisodeSlug = firstEpisode ? getEpisodeSlug(firstEpisode) : '';
+  const latestEpisodeSlug = latestEpisode ? getEpisodeSlug(latestEpisode) : '';
   // Reversed copy for display (newest at top)
   const episodesDesc = [...episodes].reverse();
 
@@ -258,10 +262,10 @@ export default function Detail() {
               {item.episodes && item.episodes.length > 0 ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
                   {episodesDesc.map((ep) => {
-                    const epSlug = getEpisodeSlug(ep.url);
+                    const epSlug = getEpisodeSlug(ep);
                     return (
                       <Link 
-                        key={ep.url}
+                        key={epSlug}
                         href={`/watch/${slug}/${epSlug}`}
                         className="flex items-center justify-between p-4 rounded-xl bg-card border border-border hover:border-primary/50 hover:bg-secondary/50 transition-all group"
                       >

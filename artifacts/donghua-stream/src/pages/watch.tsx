@@ -197,17 +197,23 @@ export default function Watch() {
   const series = detailData?.result;
   const episodes = series?.episodes || [];
 
-  const getEpisodeSlug = (url: string) => {
+  // Prefer the API's own `slug` field — it's always populated (including for
+  // Dailymotion look-ahead episodes anichin hasn't listed yet, whose `url` is
+  // empty). Deriving from `url` broke for those: every such episode resolved
+  // to the same "" slug, causing duplicate React keys and dead episode links
+  // that pointed at /watch/:seriesSlug/ with no episode segment.
+  const getEpisodeSlug = (ep: { url: string; slug?: string }) => {
+    if (ep.slug) return ep.slug;
     try {
-      const urlObj = new URL(url);
+      const urlObj = new URL(ep.url);
       return urlObj.pathname.split("/").filter(Boolean).pop() || "";
     } catch {
-      const parts = url.split("/").filter(Boolean);
-      return parts[parts.length - 1] || url;
+      const parts = ep.url.split("/").filter(Boolean);
+      return parts[parts.length - 1] || ep.url;
     }
   };
 
-  const currentIndex = episodes.findIndex((ep) => getEpisodeSlug(ep.url) === episodeSlug);
+  const currentIndex = episodes.findIndex((ep) => getEpisodeSlug(ep) === episodeSlug);
   const nextEpisode = currentIndex !== -1 && currentIndex < episodes.length - 1 ? episodes[currentIndex + 1] : null;
   const prevEpisode = currentIndex > 0 ? episodes[currentIndex - 1] : null;
   const currentEpInfo = currentIndex !== -1 ? episodes[currentIndex] : null;
@@ -350,7 +356,7 @@ export default function Watch() {
 
                 <div className="flex items-center gap-1.5 shrink-0">
                   <Link
-                    href={prevEpisode ? `/watch/${seriesSlug}/${getEpisodeSlug(prevEpisode.url)}` : "#"}
+                    href={prevEpisode ? `/watch/${seriesSlug}/${getEpisodeSlug(prevEpisode)}` : "#"}
                     className={cn(
                       "flex items-center justify-center p-2 rounded-lg bg-secondary hover:bg-secondary/80 transition-colors",
                       !prevEpisode && "opacity-50 cursor-not-allowed pointer-events-none"
@@ -360,7 +366,7 @@ export default function Watch() {
                     <ChevronLeft className="w-5 h-5" />
                   </Link>
                   <Link
-                    href={nextEpisode ? `/watch/${seriesSlug}/${getEpisodeSlug(nextEpisode.url)}` : "#"}
+                    href={nextEpisode ? `/watch/${seriesSlug}/${getEpisodeSlug(nextEpisode)}` : "#"}
                     className={cn(
                       "flex items-center justify-center p-2 rounded-lg bg-secondary hover:bg-secondary/80 transition-colors text-primary",
                       !nextEpisode && "opacity-50 cursor-not-allowed pointer-events-none text-foreground"
@@ -464,7 +470,7 @@ export default function Watch() {
                 </div>
               ) : (
                 episodes.map((ep) => {
-                  const epSlug = getEpisodeSlug(ep.url);
+                  const epSlug = getEpisodeSlug(ep);
                   const isActive = epSlug === episodeSlug;
 
                   return (
