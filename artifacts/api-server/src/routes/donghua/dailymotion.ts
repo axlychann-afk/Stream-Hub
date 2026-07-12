@@ -223,7 +223,7 @@ export async function getDailymotionServer(episodeSlug: string): Promise<VideoSe
     // and the frontend's isServerBlocked in watch.tsx).
     return {
       name: "Dailymotion",
-      embed_url: `https://www.dailymotion.com/embed/video/${best.videoId}?dcsrc=dongchindopro`,
+      embed_url: `https://geo.dailymotion.com/player.html?video=${best.videoId}&autoplay=0&mute=0&loop=0&controls=1&showinfo=1&dcsrc=dongchindopro`,
     };
   } catch {
     return null;
