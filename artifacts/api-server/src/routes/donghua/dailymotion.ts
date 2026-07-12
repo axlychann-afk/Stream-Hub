@@ -91,7 +91,7 @@ async function fetchChannelVideos(): Promise<DmEntry[]> {
   const entries: DmEntry[] = [];
   for (let page = 1; page <= MAX_PAGES; page++) {
     const { data } = await axios.get(DM_API, {
-      params: { fields: "id,title,created_time", limit: 100, page },
+      params: { fields: "id,title,created_time", limit: 100, page, sort: "recent" },
       timeout: REQUEST_TIMEOUT,
     });
     const list: DmVideo[] = Array.isArray(data?.list) ? data.list : [];
