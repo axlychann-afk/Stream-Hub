@@ -327,7 +327,17 @@ export default async function handler(req, res) {
   setCors(res);
   if (req.method === 'OPTIONS') return res.status(200).end();
 
-  const segments = Array.isArray(req.query.path) ? req.query.path : [req.query.path].filter(Boolean);
+  // Don't rely on req.query.path for the dynamic segment — parse it
+  // directly from the request URL instead, since it's been unreliable
+  // across Vercel runtime versions for catch-all API routes outside
+  // Next.js. This works regardless of how (or whether) Vercel populates
+  // route params into req.query.
+  let segments = Array.isArray(req.query.path) ? req.query.path : [req.query.path].filter(Boolean);
+  if (segments.length === 0) {
+    const pathname = (req.url || '').split('?')[0];
+    const match = pathname.match(/\/api\/donghua\/(.*)/);
+    if (match) segments = match[1].split('/').filter(Boolean);
+  }
   const route = segments[0];
   const fn = route ? ROUTES[route] : undefined;
   if (!fn) {
