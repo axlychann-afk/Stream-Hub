@@ -2,6 +2,86 @@
 // Proxies to axlyapi.qzz.io instead of scraping anichin.moe directly
 
 export const AXLY_BASE = 'https://axlyapi.qzz.io/donghua';
+const AXLY_ANIMASU_BASE = 'https://axlyapi.qzz.io/anime/animasu';
+const ANIMASU_REQUEST_TIMEOUT = 8000;
+
+// Servers confirmed to block iframe embedding entirely unless verified via
+// our own dongchindopro Dailymotion lookup (see _dailymotion.js, which tags
+// its own entries with the "dcsrc=dongchindopro" marker below).
+const BLOCKED_SERVERS = ['dailymotion'];
+const TRUSTED_DAILYMOTION_MARKER = 'dcsrc=dongchindopro';
+export function isServerBlocked(name, url) {
+  const h = `${name} ${url}`.toLowerCase();
+  if (h.includes('dailymotion') && url.includes(TRUSTED_DAILYMOTION_MARKER)) return false;
+  return BLOCKED_SERVERS.some((b) => h.includes(b));
+}
+
+/**
+ * Replace wrapped embed URLs with their direct equivalent.
+ * e.g. anichin-player.web.id/index.php?ok=ID → //ok.ru/videoembed/ID
+ */
+export function unwrapEmbedUrl(url) {
+  try {
+    const u = new URL(url.startsWith('//') ? `https:${url}` : url);
+    if (u.hostname === 'anichin-player.web.id') {
+      const okId = u.searchParams.get('ok');
+      if (okId) return `//ok.ru/videoembed/${okId}`;
+    }
+  } catch { /* ignore */ }
+  return url;
+}
+
+/** Merge two server lists, deduplicating by embed_url */
+export function mergeServers(primary, secondary) {
+  const seen = new Set(primary.map((s) => s.embed_url));
+  const extras = secondary.filter((s) => !seen.has(s.embed_url));
+  return [...primary, ...extras];
+}
+
+/**
+ * Convert an anichin episode slug to Animasu's URL format.
+ * anichin: "apotheosis-episode-01-subtitle-indonesia"
+ * animasu: "nonton-apotheosis-episode-1"
+ */
+function toAnimasuSlug(slug) {
+  if (slug.startsWith('nonton-')) return slug;
+  const m = slug.match(/^(.+?)-episode-0*(\d+)(?:-subtitle.*)?$/i);
+  if (m) return `nonton-${m[1]}-episode-${parseInt(m[2], 10)}`;
+  return `nonton-${slug}`;
+}
+
+/**
+ * Fetch servers from Animasu (via axly) for an episode slug. Returns an
+ * empty array on any failure/timeout so it never breaks the main flow —
+ * Animasu's upstream is frequently slow/erroring.
+ */
+export async function scrapeAnimasuServersForSlug(slug) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ANIMASU_REQUEST_TIMEOUT);
+  try {
+    const animasuSlug = toAnimasuSlug(slug);
+    const animasuUrl = `https://v1.animasu.work/${animasuSlug}/`;
+    const res = await fetch(`${AXLY_ANIMASU_BASE}/stream?url=${encodeURIComponent(animasuUrl)}`, {
+      signal: controller.signal,
+    });
+    if (!res.ok) return [];
+    const data = await res.json();
+    if (!data?.status || !data?.result?.dropdown_servers) return [];
+    const servers = [];
+    for (const s of data.result.dropdown_servers) {
+      const name = typeof s.label === 'string' ? s.label.trim() : '';
+      const embed_url = unwrapEmbedUrl(typeof s.embed_url === 'string' ? s.embed_url.trim() : '');
+      if (name && embed_url && !isServerBlocked(name, embed_url)) {
+        servers.push({ name: `[Animasu] ${name}`, embed_url });
+      }
+    }
+    return servers;
+  } catch {
+    return [];
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 export function setCors(res) {
   res.setHeader('Access-Control-Allow-Origin', '*');

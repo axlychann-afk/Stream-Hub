@@ -3,12 +3,9 @@
   "buildCommand": "pnpm --filter @workspace/donghua-stream run build",
   "outputDirectory": "artifacts/donghua-stream/dist",
   "framework": null,
-  "env": {
-    "VITE_API_BASE_URL": "https://axlyapi.qzz.io"
-  },
   "rewrites": [
     {
-      "source": "/(.*)",
+      "source": "/((?!api/).*)",
       "destination": "/index.html"
     }
   ]
