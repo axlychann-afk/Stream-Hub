@@ -46,7 +46,11 @@ function normalize(s: string): string {
  * abbreviation on the channel really corresponds to that series slug.
  */
 const SERIES_ALIASES: Record<string, string[]> = {
-  "btth-season-5": ["btth", "doupocangqiong5"], // "BTTH Season 5" on-site — episode slugs use this prefix even though the series detail-page slug is "oyen-pertempuran-akhir-sekte-misty-cloud"; uploader labels this show either "BTTH" or its Chinese pinyin title "Doupo Cangqiong"
+  // Site's actual slug for "BTTH Season 5" is this odd machine-translated
+  // string, not "btth-season-5" (that key never matched a real episode slug
+  // and silently gave this show zero Dailymotion coverage). Uploader labels
+  // this show "BTTH", "BTTH 5", or its Chinese pinyin title "Doupo Cangqiong".
+  "oyen-pertempuran-akhir-sekte-misty-cloud": ["btth", "btth5", "doupocangqiong5"],
   "coiling-dragon": ["coilingdragon"],
   "ever-night": ["evernight"],
   "perfect-world": ["perfectworld"],
@@ -141,18 +145,33 @@ async function getEntries(): Promise<DmEntry[]> {
 }
 
 /**
+ * Candidate dongchindopro show codes for a series slug: any manually
+ * curated aliases (for series whose upload naming doesn't match their own
+ * slug), plus the normalized slug itself as a fallback. Most of the
+ * channel's uploads are titled with the show name squashed together (e.g.
+ * "beyond-times-gaze" -> "beyondtimesgaze"), which is exactly
+ * normalize(seriesSlug) — so this extends coverage to every series
+ * automatically without a manual entry per show, while staying an
+ * exact-match lookup (never fuzzy): a series the channel doesn't cover
+ * simply matches nothing instead of risking a wrong-episode mismatch.
+ */
+function candidateCodes(seriesSlug: string): string[] {
+  const aliases = SERIES_ALIASES[seriesSlug] ?? [];
+  const fallback = normalize(seriesSlug);
+  return aliases.includes(fallback) ? aliases : [...aliases, fallback];
+}
+
+/**
  * Lists every episode number the dongchindopro channel has uploaded for a
  * series, with each episode's newest matching upload. Used to surface
  * episodes Dailymotion has published ahead of anichin.moe listing them —
  * dongchindopro often uploads before anichin's own episode page goes up.
- * Returns [] (never throws) if the series has no confirmed alias or the
- * channel lookup fails.
+ * Returns [] (never throws) if nothing matches or the channel lookup fails.
  */
 export async function listDailymotionEpisodes(
   seriesSlug: string
 ): Promise<Array<{ episodeNumber: number; videoId: string; createdTime: number }>> {
-  const codes = SERIES_ALIASES[seriesSlug];
-  if (!codes || codes.length === 0) return [];
+  const codes = candidateCodes(seriesSlug);
 
   try {
     const entries = await Promise.race([
@@ -198,8 +217,7 @@ export function parseEpisodeSlug(slug: string): { seriesSlug: string; episodeNum
 export async function getDailymotionServer(episodeSlug: string): Promise<VideoServer | null> {
   const parsed = parseEpisodeSlug(episodeSlug);
   if (!parsed) return null;
-  const codes = SERIES_ALIASES[parsed.seriesSlug];
-  if (!codes || codes.length === 0) return null;
+  const codes = candidateCodes(parsed.seriesSlug);
 
   try {
     // Race against LOOKUP_BUDGET_MS instead of awaiting getEntries() directly:

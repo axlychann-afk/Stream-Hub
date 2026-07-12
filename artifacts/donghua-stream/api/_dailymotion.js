@@ -31,7 +31,10 @@ function normalize(s) {
  * Keep in sync with artifacts/api-server/src/routes/donghua/dailymotion.ts.
  */
 const SERIES_ALIASES = {
-  "btth-season-5": ["btth", "doupocangqiong5"],
+  // Site's actual slug for "BTTH Season 5" is this odd machine-translated
+  // string, not "btth-season-5" — the old key never matched any real
+  // episode slug, so this series silently never got Dailymotion coverage.
+  "oyen-pertempuran-akhir-sekte-misty-cloud": ["btth", "btth5", "doupocangqiong5"],
   "coiling-dragon": ["coilingdragon"],
   "ever-night": ["evernight"],
   "perfect-world": ["perfectworld"],
@@ -128,15 +131,30 @@ async function getEntries() {
 }
 
 /**
+ * Candidate dongchindopro show codes for a series slug: any manually
+ * curated aliases (for series whose upload naming doesn't match their own
+ * slug), plus the normalized slug itself as a fallback. Most of the
+ * channel's uploads are titled with the show name squashed together
+ * (e.g. "beyond-times-gaze" -> "beyondtimesgaze"), which is exactly
+ * normalize(seriesSlug) — so this extends coverage to every series
+ * automatically without needing a manual entry per show, while staying an
+ * exact-match lookup (never fuzzy) so a series the channel doesn't cover
+ * simply matches nothing instead of risking a wrong-episode mismatch.
+ */
+function candidateCodes(seriesSlug) {
+  const aliases = SERIES_ALIASES[seriesSlug] ?? [];
+  const fallback = normalize(seriesSlug);
+  return aliases.includes(fallback) ? aliases : [...aliases, fallback];
+}
+
+/**
  * Lists every episode number the dongchindopro channel has uploaded for a
  * series, with each episode's newest matching upload. Used to surface
  * episodes Dailymotion has published ahead of anichin.moe listing them.
- * Returns [] (never throws) if the series has no confirmed alias or the
- * channel lookup fails.
+ * Returns [] (never throws) if nothing matches or the channel lookup fails.
  */
 export async function listDailymotionEpisodes(seriesSlug) {
-  const codes = SERIES_ALIASES[seriesSlug];
-  if (!codes || codes.length === 0) return [];
+  const codes = candidateCodes(seriesSlug);
 
   try {
     const entries = await Promise.race([
@@ -174,14 +192,13 @@ export function parseEpisodeSlug(slug) {
 
 /**
  * Best-effort Dailymotion embed lookup for a given episode slug. Returns null
- * (never throws) whenever the series has no confirmed alias, the channel has
- * no matching upload yet, or the Dailymotion API is unreachable.
+ * (never throws) whenever nothing matches or the Dailymotion API is
+ * unreachable.
  */
 export async function getDailymotionServer(episodeSlug) {
   const parsed = parseEpisodeSlug(episodeSlug);
   if (!parsed) return null;
-  const codes = SERIES_ALIASES[parsed.seriesSlug];
-  if (!codes || codes.length === 0) return null;
+  const codes = candidateCodes(parsed.seriesSlug);
 
   try {
     const entries = await Promise.race([
