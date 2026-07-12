@@ -4,8 +4,8 @@ import type { VideoServer } from "./scraper.js";
 const DM_CHANNEL = "dongchindopro";
 const DM_API = `https://api.dailymotion.com/user/${DM_CHANNEL}/videos`;
 const REQUEST_TIMEOUT = 15000;
-const CACHE_TTL_MS = 10 * 60 * 1000;
-const MAX_PAGES = 3;
+const CACHE_TTL_MS = 30 * 60 * 1000;
+const MAX_PAGES = 10;
 // On a cold cache, fetching all MAX_PAGES sequentially can take up to
 // MAX_PAGES * REQUEST_TIMEOUT. getDailymotionServer is raced against this
 // budget so a slow/cold lookup never holds up the anichin/Animasu servers
@@ -55,8 +55,11 @@ const SERIES_ALIASES: Record<string, string[]> = {
   "ever-night": ["evernight"],
   "perfect-world": ["perfectworld"],
   "azure-legacy": ["azurelegacy"],
-  "my-senior-brother-is-too-steady": ["msbs"],
-  "way-of-choices": ["wayofchoices"],
+  // Channel uses several title formats for this show: "[MSBS] My Senior Brother Steady",
+  // "My Senior Brother Steady", "Senior Brother Steady", or the tag abbreviation "msbs".
+  "my-senior-brother-is-too-steady": ["msbs", "seniorbrothersteady", "myseniorbrothersteady", "msbsmyseniorbrothersteady"],
+  // "Way of Choices" is also known by its Chinese title "Ze Tian Ji" on the channel.
+  "way-of-choices": ["wayofchoices", "zetianji"],
   "renegade-immortal": ["renegadeimmortal"],
   "swallowed-star": ["swallowedstar"],
   // anichin's episode slugs are inconsistently spelled across this show's run —
@@ -65,13 +68,16 @@ const SERIES_ALIASES: Record<string, string[]> = {
   "shrounding-the-heavens": ["shroudingtheheavens"],
   "shrouding-the-heavens": ["shroudingtheheavens"],
   "tomb-of-fallen-gods-season-3": ["tomboffallengods3"],
-  "the-great-ruler": ["thegreatruler"],
-  "walking-the-way-all-alone": ["walkingthewayalone"],
+  // "The Great Ruler" is also uploaded as "Da Zhu Zai" (Chinese pinyin title).
+  "the-great-ruler": ["thegreatruler", "dazhuzai"],
+  // Channel occasionally spells this "allone" (typo) instead of "alone".
+  "walking-the-way-all-alone": ["walkingthewayalone", "walkingthewayallone"],
   "in-search-of-gods": ["insearchofgods"],
   "tales-of-herding-god": ["talesofherdinggods"],
   "purple-river-season-2": ["purpleriver2"],
   "slay-the-gods-season-2": ["slaythegods2"],
-  "the-other-side-of-deep-space": ["theothersidedeepspace"],
+  // Channel omits "of" in some uploads: "The Other Side Deep Space" vs "The Other Side of Deep Space".
+  "the-other-side-of-deep-space": ["theothersidedeepspace", "theothersideofdeepspace"],
   "eclipse-of-illusion-special-the-miasma-war": ["eclipseofillusionspecialthemiasmawar"],
   "100-000-years-of-refining-qi": ["100000refiningqi"],
   // NOTE: no confirmed alias for ARMJI — the site's "remake" season only has 8
@@ -81,6 +87,12 @@ const SERIES_ALIASES: Record<string, string[]> = {
   // overlaps the channel uploads.
   "beyond-times-gaze": ["beyondtimesgaze"],
   "dragons-triumph-in-the-celestial-realm": ["dragonstriumphcelestialrealm"],
+  // Channel omits "of" in many uploads: "The Gate Mystical Realm" vs "The Gate of Mystical Realm".
+  "the-gate-of-mystical-realm": ["thegateofmysticalrealm", "thegatemysticalrealm"],
+  // Channel uses both "Legend of Martial Immortal" and "Legend Martial Immortal" (drops "of").
+  "legend-of-martial-immortal": ["legendofmartialimmortal", "legendmartialimmortal"],
+  // Soul Land season 2 — channel titles it "Soul Land 2".
+  "soul-land-season-2": ["soullandseason2", "soulland2"],
 };
 
 /**
