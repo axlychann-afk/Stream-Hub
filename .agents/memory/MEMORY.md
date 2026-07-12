@@ -1,3 +1,4 @@
-- [Adsterra popunder mobile quirk](adsterra-popunder-mobile.md) — popunder/social-bar scripts can appear broken on mobile but it's usually ad-network device targeting/no-fill, not app code.
+- [Dailymotion channel page limit](dailymotion-page-limit.md) — MAX_PAGES must cover the full channel; dongchindopro had 1000 videos (10 pages) but default was 3, silently missing 70% of episodes.
 - [Dailymotion embed matching](dailymotion-embed-matching.md) — series↔episode matching must be an explicit alias map, never fuzzy; wrong matches show the wrong video silently.
+- [Adsterra popunder mobile quirk](adsterra-popunder-mobile.md) — popunder/social-bar scripts can appear broken on mobile but it's usually ad-network device targeting/no-fill, not app code.
 - [Vercel serverless function limits](vercel-serverless-function-limits.md) — Hobby plan caps 12 functions/deployment (silent 404, no build error); catch-all `req.query.path` unreliable, parse from `req.url` instead.
